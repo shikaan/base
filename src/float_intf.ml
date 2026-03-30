@@ -151,6 +151,10 @@ module Definitions = struct
     val iround_down : t -> int option
     val iround_up : t -> int option
     val iround_nearest : t -> int option
+    val iround_towards_zero_or_null : t -> int or_null [@@zero_alloc]
+    val iround_down_or_null : t -> int or_null [@@zero_alloc]
+    val iround_up_or_null : t -> int or_null [@@zero_alloc]
+    val iround_nearest_or_null : t -> int or_null [@@zero_alloc]
     val iround_towards_zero_exn : t -> int [@@zero_alloc]
     val iround_down_exn : t -> int [@@zero_alloc]
     val iround_up_exn : t -> int [@@zero_alloc]
@@ -158,6 +162,10 @@ module Definitions = struct
     val int63_round_down_exn : t -> Int63.t
     val int63_round_up_exn : t -> Int63.t
     val int63_round_nearest_exn : t -> Int63.t
+
+    (** If the argument is NaN, infinite, or otherwise cannot be represented, no exception
+        is raised and the result is an unspecified int64. *)
+    val iround_nearest_half_to_even : t -> int64
 
     (** If [f < iround_lbound || f > iround_ubound], then [iround*] functions will refuse
         to round [f], returning [None] or raising as appropriate. *)
@@ -643,6 +651,10 @@ module Definitions = struct
 
     (** Square root. *)
     external sqrt : (t[@local_opt]) -> t = "caml_sqrt_float" "sqrt"
+    [@@unboxed] [@@noalloc]
+
+    (** Cube root. *)
+    external cbrt : (t[@local_opt]) -> t = "caml_cbrt_float" "caml_cbrt"
     [@@unboxed] [@@noalloc]
 
     (** Exponential. *)

@@ -4,16 +4,18 @@ open Import
 open Ppx_compare_lib.Builtin
 open Globalize
 
-module T = struct
-  type%template 'a t = ( :: ) of 'a * ('a List.t[@kind k]) [@@kind k = base_non_value]
+[%%template
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
 
-  type nonrec 'a t = ( :: ) of 'a * 'a list
+module%template T = struct
+  type 'a t = ( :: ) of 'a * ('a List.t[@kind k]) [@@kind.explicit k = all_ks]
+  type 'a t = ('a t[@kind.explicit value_or_null]) = ( :: ) of 'a * 'a list
 
-  [%%template
-  [@@@kind k = (base_non_value, value_or_null)]
+  [@@@kind k = all_ks]
 
   open struct
-    type nonrec 'a t = ('a t[@kind k]) = ( :: ) of 'a * ('a List.t[@kind k])
+    type nonrec 'a t = ('a t[@kind.explicit k]) = ( :: ) of 'a * ('a List.t[@kind k])
   end
 
   [@@@kind.default k]
@@ -24,24 +26,59 @@ module T = struct
   let of_list_exn : (_ List.t[@kind k]) -> _ t = function
     | [] -> Error.raise_s (Atom "Nonempty_list.of_list_exn: empty list")
     | hd :: tl -> hd :: tl [@exclave_if_local m]
-  ;;]
+  ;;
 end
 
 include T
 
-module Format = struct
-  type 'a t = 'a list [@@deriving sexp]
+module For_deriving = struct
+  [%%template
+  [@@@kind.default k = all_ks_non_value]
+
+  module Format = struct
+    type 'a t = ('a List.t[@kind k]) [@@deriving sexp_of ~stackify]
+  end
+
+  module To = struct
+    include T
+
+    let[@alloc a @ m = (heap_global, stack_local)] to_sexpable =
+      (to_list [@mode m] [@kind k])
+    ;;
+  end
+
+  type nonrec 'a t = ('a t[@kind k]) = ( :: ) of 'a * ('a List.t[@kind k])
+  [@@deriving compare ~localize, equal ~localize]
+
+  (* Copied from [Sexpable.Of_sexpable1] since there is no version of the functor that
+     only produces [sexp_of_t] and this is a temporary state while we wait for
+     [t_of_sexp__stack]. *)
+  let[@alloc a = (heap, stack)] sexp_of_t sexp_of_a t =
+    let module Format = Format [@kind k] in
+    let module To = To [@kind k] in
+    (Format.sexp_of_t [@alloc a])
+      sexp_of_a
+      ((To.to_sexpable [@alloc a]) t) [@exclave_if_stack a]
+  ;;]
 end
 
-include%template
-  Sexpable.Of_sexpable1 [@modality portable]
-    (Format)
-    (struct
-      include T
+include For_deriving
 
-      let to_sexpable = to_list
-      let of_sexpable = of_list_exn
-    end)
+module Format = struct
+  type 'a t = 'a List.t [@@deriving sexp ~stackify]
+end
+
+module To = struct
+  include T
+
+  let%template[@alloc a @ m = (heap_global, stack_local)] to_sexpable =
+    (to_list [@mode m])
+  ;;
+
+  let of_sexpable = of_list_exn
+end
+
+include%template Sexpable.Of_sexpable1 [@modality portable] [@alloc stack] (Format) (To)
 
 let t_sexp_grammar (type a) ({ untyped = element } : [%sexp_grammar: a])
   : [%sexp_grammar: a t]
@@ -49,182 +86,210 @@ let t_sexp_grammar (type a) ({ untyped = element } : [%sexp_grammar: a])
   { untyped = List (Cons (element, Many element)) }
 ;;
 
-type%template nonrec 'a t = ('a t[@kind k]) = ( :: ) of 'a * ('a List.t[@kind k])
-[@@kind k = base_non_value] [@@deriving compare ~localize, equal ~localize]
-
 type nonrec 'a t = 'a t = ( :: ) of 'a * 'a list
 [@@deriving compare ~localize, equal ~localize, hash, globalize]
 
-include%template Comparator.Derived [@modality portable] (struct
-    type nonrec 'a t = 'a t [@@deriving compare, sexp_of]
+include%template Comparator.Derived [@modality portable] [@mode local] (struct
+    type nonrec 'a t = 'a t [@@deriving compare ~localize, sexp_of]
   end)
 
 [%%template
-[@@@kind k = base_or_null]
+[@@@kind k = all_ks]
 
 open struct
-  type nonrec 'a t = ('a t[@kind k]) = ( :: ) of 'a * ('a List.t[@kind k])
+  type nonrec 'a t = ('a t[@kind.explicit k]) = ( :: ) of 'a * ('a List.t[@kind k])
 end
 
-[@@@kind.default k]
+let length (_ :: tl) = 1 + (List.length [@kind k]) tl [@@kind k]
 
-let[@mode m = (global, local)] to_list t =
-  (to_list [@kind k] [@mode m]) t [@exclave_if_local m]
-;;
+include struct
+  [@@@kind.default k]
+  [@@@mode.default m = (global, local)]
 
-let[@mode m = (global, local)] of_list_exn l =
-  (of_list_exn [@kind k] [@mode m]) l [@exclave_if_local m]
-;;
+  let of_list : (_ List.t[@kind k]) -> _ t option = function
+    | [] -> None
+    | hd :: tl -> Some (hd :: tl) [@exclave_if_local m]
+  ;;
 
-let hd (hd :: _) = hd
-let tl (_ :: tl) = tl
+  let of_list_or_null : (_ List.t[@kind k]) -> _ t or_null = function
+    | [] -> Null
+    | hd :: tl -> This (hd :: tl) [@exclave_if_local m]
+  ;;
 
-let of_list : (_ List.t[@kind k]) -> _ t option = function
-  | [] -> None
-  | hd :: tl -> Some (hd :: tl) [@exclave_if_local m]
-[@@mode m = (global, local)]
-;;
+  let of_list_error : (_ List.t[@kind k]) -> _ t Or_error.t = function
+    | [] -> Or_error.error_s (Atom "empty list")
+    | hd :: tl -> Ok (hd :: tl) [@exclave_if_local m]
+  ;;
 
-let of_list_or_null : (_ List.t[@kind k]) -> _ t or_null = function
-  | [] -> Null
-  | hd :: tl -> This (hd :: tl) [@exclave_if_local m]
-[@@mode m = (global, local)]
-;;
+  let of_list_exn l = (of_list_exn [@kind k] [@mode m]) l [@exclave_if_local m]
+  let to_list t = (to_list [@kind k] [@mode m]) t [@exclave_if_local m]
+  let hd (hd :: _) = hd [@exclave_if_local m]
+  let tl (_ :: tl) : (_ List.t[@kind k]) = tl [@exclave_if_local m]
 
-let of_list_error : (_ List.t[@kind k]) -> _ t Or_error.t = function
-  | [] -> Or_error.error_s (Atom "empty list")
-  | hd :: tl -> Ok (hd :: tl) [@exclave_if_local m]
-[@@mode m = (global, local)]
-;;
+  let nth (hd :: tl) n : (_ Option.t[@kind k]) =
+    match n with
+    | 0 -> Some hd [@exclave_if_local m]
+    | n ->
+      (List.nth [@mode m] [@kind k])
+        tl
+        (n - 1) [@exclave_if_local m ~reasons:[ May_return_local ]]
+  ;;
 
-let length (_ :: tl) = 1 + (List.length [@kind k]) tl
-let create hd tl = hd :: tl
-let singleton hd = [ hd ]
-let cons x (hd :: tl) = x :: hd :: tl
+  let nth_exn t n =
+    match[@exclave_if_local m ~reasons:[ May_return_local ]]
+      (nth [@kind k] [@mode m]) t n
+    with
+    | Some a -> a
+    | None ->
+      (match
+         Printf.invalid_argf
+           "Nonempty_list.nth_exn %d called on list of length %d"
+           n
+           ((length [@kind k]) t)
+           ()
+       with
+       | (_ : Nothing.t) -> .)
+  ;;
 
-let nth (hd :: tl) n : (_ Option.t[@kind k]) =
-  match n with
-  | 0 -> Some hd
-  | n -> (List.nth [@kind k]) tl (n - 1)
-;;
+  let reduce (hd :: tl) ~f =
+    (List.fold [@kind k k] [@mode m m]) ~init:hd tl ~f [@exclave_if_local m]
+  ;;
 
-let nth_exn (t : _ t) n =
-  match (nth [@kind k]) t n with
-  | None ->
-    (match
-       Printf.invalid_argf
-         "Nonempty_list.nth_exn %d called on list of length %d"
-         n
-         ((length [@kind k]) t)
-         ()
-     with
-     | (_ : Nothing.t) -> .)
-  | Some a -> a
-;;
+  let last (hd :: tl) =
+    (List.fold [@kind k k] [@mode m m]) tl ~init:hd ~f:(fun _ elt ->
+      elt [@exclave_if_local m])
+    [@exclave_if_local m ~reasons:[ May_return_local ]]
+  ;;
 
-let filter (hd :: tl) ~f : (_ List.t[@kind k]) =
-  match f hd with
-  | false -> (List.filter [@kind k]) tl ~f
-  | true -> hd :: (List.filter [@kind k]) tl ~f
-;;
+  let iter (type a) (hd :: tl : (a t[@kind k])) ~f =
+    f hd;
+    (List.iter [@kind k] [@mode m]) ~f tl [@nontail]
+  ;;
 
-let filteri (hd :: tl) ~f : (_ List.t[@kind k]) =
-  let include_hd = f 0 hd in
-  let[@inline always] f i x = f (i + 1) x in
-  match include_hd with
-  | false -> (List.filteri [@kind k]) tl ~f [@nontail]
-  | true -> hd :: (List.filteri [@kind k]) tl ~f
-;;
+  let iteri (type a) (hd :: tl : (a t[@kind k])) ~f =
+    f 0 hd;
+    (List.iteri [@kind k] [@mode m]) ~f:(fun i x -> f (i + 1) x) tl [@nontail]
+  ;;
 
-let reduce (hd :: tl) ~f = (List.fold [@kind k k]) ~init:hd tl ~f
+  let min_elt' (type a) (hd :: tl : (a t[@kind k])) ~compare =
+    (List.fold [@kind k k] [@mode m m]) tl ~init:hd ~f:(fun min elt ->
+      if compare min elt > 0 then elt [@exclave_if_local m] else min [@exclave_if_local m])
+    [@exclave_if_local m ~reasons:[ May_return_local ]] [@nontail]
+  ;;
 
-let[@alloc a @ m = (stack_local, heap_global)] reverse (hd :: tl) =
-  let rec loop acc x (xs : (_ List.t[@kind k])) =
-    match xs with
-    | [] -> x :: acc [@exclave_if_local m]
-    | y :: ys -> loop (x :: acc) y ys [@exclave_if_stack a]
-  in
-  loop [] hd tl [@exclave_if_local m]
-;;
+  let max_elt' (type a) (t : (a t[@kind k])) ~compare =
+    (min_elt' [@kind k] [@mode m]) t ~compare:(fun x y -> compare y x)
+    [@exclave_if_local m ~reasons:[ May_return_local ]] [@nontail]
+  ;;
+end
 
-let append (hd :: tl) l = hd :: (List.append [@kind k]) tl l
+include struct
+  [@@@kind.default k]
+  [@@@alloc.default a @ m = (heap_global, stack_local)]
 
-let init n ~f =
-  if n < 1 then Printf.invalid_argf "Nonempty_list.init %d" n ();
-  (* [List.init] calls [f] on the highest index first and works its way down. We do the
-     same here. *)
-  let tl = (List.init [@kind k]) (n - 1) ~f:(fun i -> f (i + 1)) in
-  let hd = f 0 in
-  hd :: tl
-;;
+  let create hd tl = hd :: tl [@exclave_if_stack a]
+  let singleton hd = [ hd ] [@exclave_if_stack a]
 
-let last (hd :: tl) = (List.fold [@kind k k]) tl ~init:hd ~f:(fun _ elt -> elt)
+  let cons (type a) (x : a) (hd :: tl : (a t[@kind k])) : (a t[@kind k]) =
+    x :: hd :: tl [@exclave_if_stack a]
+  ;;
 
-let iter (hd :: tl) ~f =
-  f hd;
-  (List.iter [@kind k]) ~f tl
-;;
+  let filter (hd :: tl) ~f : (_ List.t[@kind k]) =
+    match[@exclave_if_stack a] f hd with
+    | false -> (List.filter [@kind k] [@alloc a]) tl ~f
+    | true -> hd :: (List.filter [@kind k] [@alloc a]) tl ~f
+  ;;
 
-(* Temporarily copied from base while we wait for list.ml to be localized *)
-let rec iter_local_list (t : (_ List.t[@kind k])) ~f =
-  match t with
-  | [] -> ()
-  | a :: xs ->
-    f a;
-    (iter_local_list [@kind k] [@tailcall]) xs ~f
-;;
+  let filteri (hd :: tl) ~f : (_ List.t[@kind k]) =
+    (let include_hd = f 0 hd in
+     let[@inline always] f i x = f (i + 1) x in
+     match include_hd with
+     | false -> (List.filteri [@kind k] [@alloc a]) tl ~f [@nontail]
+     | true -> hd :: (List.filteri [@kind k] [@alloc a]) tl ~f)
+    [@exclave_if_stack a]
+  ;;
 
-let[@mode local] iter (hd :: tl : (_ t[@kind k])) ~f =
-  f hd;
-  (iter_local_list [@kind k]) tl ~f
-;;
+  let reverse (hd :: tl) =
+    let rec loop acc x (xs : (_ List.t[@kind k])) =
+      match xs with
+      | [] -> x :: acc [@exclave_if_local m]
+      | y :: ys -> loop (x :: acc) y ys [@exclave_if_stack a]
+    in
+    loop [] hd tl [@exclave_if_local m]
+  ;;
 
-let iteri (hd :: tl) ~f =
-  f 0 hd;
-  (List.iteri [@kind k]) ~f:(fun i x -> f (i + 1) x) tl [@nontail]
-;;
+  let init n ~f =
+    if n < 1 then Printf.invalid_argf "Nonempty_list.init %d" n ();
+    (* [List.init] calls [f] on the highest index first and works its way down. We do the
+       same here. *)
+    (let tl =
+       (List.init [@kind k] [@alloc a]) (n - 1) ~f:(fun i ->
+         f (i + 1) [@exclave_if_stack a])
+     in
+     let hd = f 0 in
+     hd :: tl)
+    [@exclave_if_stack a]
+  ;;
 
-let ( @ ) t1 t2 = (append [@kind k]) t1 ((to_list [@kind k]) t2)]
+  let append (type a) (hd :: tl : (a t[@kind k])) l : (a t[@kind k]) =
+    hd :: (List.append [@alloc a] [@kind k]) tl l [@exclave_if_stack a]
+  ;;
+end]
+
+let ( @ ) t1 t2 = append t1 (to_list t2)
 
 [%%template
-[@@@kind.default ka = base_or_null, kb = base_or_null]
+[@@@kind.default ka = all_ks, kb = all_ks]
 
 open struct
   type nonrec 'a t = ('a t[@kind ka]) = ( :: ) of 'a * ('a List.t[@kind ka]) [@@kind ka]
 end
 
+[@@@mode.default mi = (global, local)]
+[@@@alloc.default a @ mo = (heap_global, stack_local)]
+
 let mapi (hd :: tl) ~f : (_ t[@kind kb]) =
   (* Being overly cautious about evaluation order *)
-  let hd = f 0 hd in
-  hd :: (List.mapi [@kind ka kb]) tl ~f:(fun i x -> f (i + 1) x)
+  (let hd = f 0 hd in
+   hd
+   :: (List.mapi [@kind ka kb] [@mode mi] [@alloc a]) tl ~f:(fun i x ->
+     f (i + 1) x [@exclave_if_stack a]))
+  [@exclave_if_stack a]
 ;;
 
 let filter_map (hd :: tl) ~f : (_ List.t[@kind kb]) =
-  match (f hd : (_ Option.t[@kind kb])) with
-  | None -> (List.filter_map [@kind ka kb]) tl ~f
-  | Some hd -> hd :: (List.filter_map [@kind ka kb]) tl ~f
+  match[@exclave_if_stack a] (f hd : (_ Option.t[@kind kb])) with
+  | None -> (List.filter_map [@kind ka kb] [@mode mi] [@alloc a]) tl ~f
+  | Some hd -> hd :: (List.filter_map [@kind ka kb] [@mode mi] [@alloc a]) tl ~f
 ;;
 
 let filter_mapi (hd :: tl) ~f : (_ List.t[@kind kb]) =
-  let hd = f 0 hd in
-  let[@inline always] f i x = f (i + 1) x in
-  match (hd : (_ Option.t[@kind kb])) with
-  | None -> (List.filter_mapi [@kind ka kb]) tl ~f [@nontail]
-  | Some hd -> hd :: (List.filter_mapi [@kind ka kb]) tl ~f
+  (let hd = f 0 hd in
+   let[@inline always] f i x = f (i + 1) x [@exclave_if_stack a] in
+   match (hd : (_ Option.t[@kind kb])) with
+   | None -> (List.filter_mapi [@kind ka kb] [@mode mi] [@alloc a]) tl ~f [@nontail]
+   | Some hd -> hd :: (List.filter_mapi [@kind ka kb] [@mode mi] [@alloc a]) tl ~f)
+  [@exclave_if_stack a]
 ;;
 
-let map t ~f = (mapi [@kind ka kb]) t ~f:(fun (_ : int) x -> f x) [@nontail]
-
-let bind (type a b) (hd :: tl : (a t[@kind ka])) ~(f : a -> (b t[@kind kb])) =
-  let f_hd = f hd in
-  (append [@kind kb])
-    f_hd
-    ((List.concat_map [@kind ka kb]) tl ~f:(fun x ->
-       let x = f x in
-       (to_list [@kind kb]) x))
+let map t ~f =
+  (mapi [@kind ka kb] [@mode mi] [@alloc a]) t ~f:(fun (_ : int) x ->
+    f x [@exclave_if_stack a])
+  [@nontail] [@exclave_if_stack a]
 ;;
 
-let concat_map = (bind [@kind ka kb])]
+let concat_map (type a b) (hd :: tl : (a t[@kind ka])) ~(f : a -> (b t[@kind kb])) =
+  (let f_hd = f hd in
+   (append [@kind kb] [@alloc a])
+     f_hd
+     ((List.concat_map [@kind ka kb] [@mode mi] [@alloc a]) tl ~f:(fun x ->
+        (let x = f x in
+         (to_list [@kind kb] [@mode mo]) x)
+        [@exclave_if_stack a])))
+  [@exclave_if_stack a]
+;;
+
+let bind = (concat_map [@kind ka kb] [@mode mi] [@alloc a])]
 
 let map2 t1 t2 ~f : _ List.Or_unequal_lengths.t =
   match List.map2 (to_list t1) (to_list t2) ~f with
@@ -233,7 +298,7 @@ let map2 t1 t2 ~f : _ List.Or_unequal_lengths.t =
 ;;
 
 let map2_exn t1 t2 ~f = List.map2_exn (to_list t1) (to_list t2) ~f |> of_list_exn
-let filter_opt t = filter_map t ~f:Fn.id
+let filter_opt t = List.filter_opt (to_list t)
 
 let append' l t =
   match l with
@@ -317,13 +382,6 @@ let all_equal t ~equal = to_list t |> List.all_equal ~equal
 let is_sorted t = to_list t |> List.is_sorted
 let is_sorted_strictly t = to_list t |> List.is_sorted_strictly
 
-let min_elt' (hd :: tl) ~compare =
-  List.fold tl ~init:hd ~f:(fun min elt -> if compare min elt > 0 then elt else min)
-  [@nontail]
-;;
-
-let max_elt' t ~compare = min_elt' t ~compare:(fun x y -> compare y x) [@nontail]
-
 let map_add_multi map ~key ~data =
   Map.update map key ~f:(function
     | None -> singleton data
@@ -354,12 +412,12 @@ let map_of_alist_multi_rev alist = map_of_container_multi_rev List.fold alist
 let map_of_sequence_multi sequence = map_of_container_multi Sequence.fold sequence
 let map_of_sequence_multi_rev sequence = map_of_container_multi_rev Sequence.fold sequence
 
-let%template fold_nonempty (hd :: tl) ~init ~f =
-  (List.fold [@mode li lo])
+let%template fold_nonempty (type a) (hd :: tl : (a t[@kind ka])) ~init ~f =
+  (List.fold [@kind ka kb] [@mode ma mb])
     tl
     ~init:(init hd)
-    ~f [@exclave_if_local lo ~reasons:[ May_return_local ]]
-[@@mode li = (local, global), lo = (local, global)]
+    ~f [@exclave_if_local mb ~reasons:[ May_return_local ]]
+[@@mode ma = (local, global), mb = (local, global)] [@@kind ka = all_ks, kb = all_ks]
 ;;
 
 let map_of_list_with_key_multi_rev list ~comparator ~get_key =
@@ -587,4 +645,4 @@ let findi_exn =
     | Some x -> x
   in
   findi_exn
-;;
+;;]

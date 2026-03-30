@@ -157,13 +157,13 @@ module type String = sig
       [uppercase "foo" = "FOO"]. *)
   val uppercase : t -> t
 
-  val uppercase__stack : t -> t
+  val%template uppercase : t -> t [@@alloc stack]
 
   (** Operates on the whole string using the US-ASCII character set, e.g.
       [lowercase "FOO" = "foo"]. *)
   val lowercase : t -> t
 
-  val lowercase__stack : t -> t
+  val%template lowercase : t -> t [@@alloc stack]
 
   (** Operates on just the first character using the US-ASCII character set, e.g.
       [capitalize "foo" = "Foo"]. *)
@@ -371,19 +371,7 @@ module type String = sig
   (** [split_on_chars s ~on] returns a list of all substrings of [s] that are separated by
       one of the chars from [on]. [on] are not grouped. So a grouping of [on] in the
       source string will produce multiple empty string splits in the result. *)
-  val split_on_chars : t -> on:char list -> t list]
-
-  (** [split_lines t] returns the list of lines that comprise [t]. The lines do not
-      include the trailing ["\n"] or ["\r\n"]. *)
-  val split_lines : t -> t list
-
-  (** [lfindi ?pos t ~f] returns the smallest [i >= pos] such that [f i t.[i]], if there
-      is such an [i]. By default, [pos = 0]. *)
-  val lfindi : ?pos:int -> t -> f:(int -> char -> bool) -> int option
-
-  (** [rfindi ?pos t ~f] returns the largest [i <= pos] such that [f i t.[i]], if there is
-      such an [i]. By default [pos = length t - 1]. *)
-  val rfindi : ?pos:int -> t -> f:(int -> char -> bool) -> int option
+  val split_on_chars : t -> on:char list -> t list
 
   (** [lstrip ?drop s] returns a string with consecutive chars satisfying [drop] (by
       default white space, e.g. tabs, spaces, newlines, and carriage returns) stripped
@@ -398,7 +386,19 @@ module type String = sig
   (** [strip ?drop s] returns a string with consecutive chars satisfying [drop] (by
       default white space, e.g. tabs, spaces, newlines, and carriage returns) stripped
       from the beginning and end of [s]. *)
-  val strip : ?drop:(char -> bool) -> t -> t
+  val strip : ?drop:(char -> bool) -> t -> t]
+
+  (** [split_lines t] returns the list of lines that comprise [t]. The lines do not
+      include the trailing ["\n"] or ["\r\n"]. *)
+  val split_lines : t -> t list
+
+  (** [lfindi ?pos t ~f] returns the smallest [i >= pos] such that [f i t.[i]], if there
+      is such an [i]. By default, [pos = 0]. *)
+  val lfindi : ?pos:int -> t -> f:(int -> char -> bool) -> int option
+
+  (** [rfindi ?pos t ~f] returns the largest [i <= pos] such that [f i t.[i]], if there is
+      such an [i]. By default [pos = length t - 1]. *)
+  val rfindi : ?pos:int -> t -> f:(int -> char -> bool) -> int option
 
   [%%template:
   [@@@mode.default mi = (global, local)]
@@ -451,11 +451,14 @@ module type String = sig
       allocating the intermediate option. *)
   val chop_prefix_if_exists : t -> prefix:t -> t
 
+  [%%template:
+  [@@@alloc.default a @ m = (heap @ global, stack @ local)]
+
   (** [suffix s n] returns the longest suffix of [s] of length less than or equal to [n]. *)
   val suffix : t -> int -> t
 
   (** [prefix s n] returns the longest prefix of [s] of length less than or equal to [n]. *)
-  val prefix : t -> int -> t
+  val prefix : t -> int -> t]
 
   (** [drop_suffix s n] drops the longest suffix of [s] of length less than or equal to
       [n]. *)
@@ -509,6 +512,8 @@ module type String = sig
 
   val of_char : char -> t
   val of_char_list : char list -> t
+
+  val%template of_list : char list -> t [@@alloc a @ m = stack_local]
 
   (** [pad_left ?char s ~len] returns [s] padded to the length [len] by adding characters
       [char] to the beginning of the string. If s is already longer than [len] it is

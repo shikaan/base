@@ -50,7 +50,7 @@ module Array = struct
   [@@layout_poly]
 
   [%%template
-  [@@@kind.default k = (value_or_null, value mod external64)]
+  [@@@kind.default k = value_or_null]
   [@@@kind k = k mod separable]
 
   (* [unsafe_blit] can't be [[@noalloc]] because, even though it does not allocate, it
@@ -78,35 +78,46 @@ module Array = struct
       -> len:int
       -> unit
       = "caml_array_blit"
-    [@@kind __ = base_non_value]]
+    [@@kind __ = (base_non_value, value_or_null mod external64)]]
 end
 
 include Array
 
 [%%template
-[@@@kind.default k = base_non_value]
+(* We use [magic_create_uninitialized] with the non-value layouts below. For
+   [value mod external64], we define a special version that initializes with [Null]. *)
+let magic_create_uninitialized ~len = create ~len (Obj.magic Null)
+[@@kind value_or_null mod external64]
+;;
 
-let unsafe_fill t pos len x =
+let magic_create_uninitialized ~len = magic_create_uninitialized ~len
+[@@kind k = base_non_value]
+;;
+
+[@@@kind.default k' = (base_non_value, value_or_null mod external64)]
+[@@@kind k = k' mod separable]
+
+let unsafe_fill (t : _ array) pos len (x : _) =
   for i = pos to pos + len - 1 do
     unsafe_set t i x
   done
 ;;
 
-let unsafe_sub t pos len =
-  let res = magic_create_uninitialized ~len in
-  (unsafe_blit [@kind k]) ~src:t ~src_pos:pos ~dst:res ~dst_pos:0 ~len;
+let unsafe_sub (t : _ array) pos len =
+  let res = (magic_create_uninitialized [@kind k']) ~len in
+  (unsafe_blit [@kind k']) ~src:t ~src_pos:pos ~dst:res ~dst_pos:0 ~len;
   res
 ;;
 
-let concat ts =
+let concat (ts : _ array list) =
   let len =
     (List0.fold [@mode local local]) ts ~init:0 ~f:(fun acc t -> acc + length t)
   in
-  let res = magic_create_uninitialized ~len in
+  let res = (magic_create_uninitialized [@kind k']) ~len in
   let _total_length =
     (List0.fold [@mode local local]) ts ~init:0 ~f:(fun start t ->
       let len = length t in
-      (unsafe_blit [@kind k]) ~src:t ~src_pos:0 ~dst:res ~dst_pos:start ~len;
+      (unsafe_blit [@kind k']) ~src:t ~src_pos:0 ~dst:res ~dst_pos:start ~len;
       start + len)
   in
   res
@@ -123,14 +134,13 @@ let create_float_uninitialized ~len =
 include struct
   external append_prim : 'a. 'a array -> 'a array -> 'a array = "caml_array_append"
 
-  [%%template
   (* Copied from [Stdlib.Array], with type annotations added for templating *)
   let copy a =
     let l = length a in
     if l = 0 then [||] else unsafe_sub a 0 l
   ;;
 
-  let%template append : type a. a array -> a array -> a array =
+  let append : type a. a array -> a array -> a array =
     fun a1 a2 ->
     let l1 = length a1 in
     if l1 = 0
@@ -138,11 +148,18 @@ include struct
     else if length a2 = 0
     then unsafe_sub a1 0 l1
     else append_prim a1 a2
-  [@@kind k = (value_or_null, value mod external64)]
-  ;;]
+  ;;
 end
 
-let%template append t1 t2 = (concat [@kind k]) [ t1; t2 ] [@@kind k = base_non_value]
+let%template append (t1 : _ array) t2 =
+  let len1 = length t1 in
+  let len2 = length t2 in
+  let res = (magic_create_uninitialized [@kind k]) ~len:(len1 + len2) in
+  (unsafe_blit [@kind k]) ~src:t1 ~src_pos:0 ~dst:res ~dst_pos:0 ~len:len1;
+  (unsafe_blit [@kind k]) ~src:t2 ~src_pos:0 ~dst:res ~dst_pos:len1 ~len:len2;
+  res
+[@@kind k = (base_non_value, value_or_null mod external64)]
+;;
 
 let blit ~src ~src_pos ~dst ~dst_pos ~len =
   Ordered_collection_common0.check_pos_len_exn
@@ -168,10 +185,10 @@ let%template fold_right t ~(f : _ -> _ -> _) ~init =
 ;;
 
 [%%template
-[@@@kind.default k' = (base_or_null, value mod external64)]
+[@@@kind.default k' = (base_or_null, value_or_null mod external64)]
 [@@@kind k = k' mod separable]
 
-let init len ~(f : _ -> _) =
+let init len ~(f : _ -> _) : _ array =
   if len = 0
   then [||]
   else if len < 0
@@ -183,7 +200,7 @@ let init len ~(f : _ -> _) =
      done;
      res)
     [@exclave_if_stack a])
-[@@alloc a = (heap, stack)]
+[@@alloc a @ l = (heap_global, stack_local)]
 ;;
 
 let sub : type a. a array -> pos:int -> len:int -> a array =
@@ -226,7 +243,7 @@ let fill : type a. a array -> pos:int -> len:int -> a -> unit =
   else (unsafe_fill [@kind k']) a pos len v
 ;;
 
-let swap t i j =
+let swap (t : _ array) i j =
   let elt_i = t.(i) in
   let elt_j = t.(j) in
   unsafe_set t i elt_j;
@@ -240,7 +257,7 @@ let swap t i j =
     for i = 0 to length t - 1 do
       f (unsafe_get t i)
     done
-  [@@kind ki = (base_or_null, value mod external64)]
+  [@@kind ki = (base_or_null, value_or_null mod external64)]
   ;;]
 
 [@@@end]
@@ -251,7 +268,7 @@ let swap t i j =
     for i = 0 to length t - 1 do
       f i (unsafe_get t i)
     done
-  [@@kind ki = (base_or_null, value mod external64)]
+  [@@kind ki = (base_or_null, value_or_null mod external64)]
   ;;]
 
 [@@@end]
@@ -264,7 +281,9 @@ let swap t i j =
       if i < length then loop (i + 1) ((f [@inlined hint]) acc (unsafe_get t i)) else acc
     in
     (loop [@inlined]) 0 init [@nontail]
-  [@@kind ki = (base, value mod external64), ko = (base, value mod external64)]
+  [@@kind
+    ki = (base_or_null, value_or_null mod external64)
+    , ko = (base_or_null, value_or_null mod external64)]
   ;;]
 
 [@@@end]
@@ -281,7 +300,7 @@ let swap t i j =
         unsafe_set r i (f (unsafe_get t i))
       done;
       r)
-  [@@kind ki = (base, value mod external64), ko = base_non_value]
+  [@@kind ki = (base_or_null, value_or_null mod external64), ko = base_non_value]
   ;;]
 
 [%%template
@@ -295,7 +314,9 @@ let swap t i j =
         unsafe_set r i (f (unsafe_get t i))
       done;
       r)
-  [@@kind ki = (base, value mod external64), ko = (value, value mod external64)]
+  [@@kind
+    ki = (base_or_null, value_or_null mod external64)
+    , ko = (value_or_null, value_or_null mod external64)]
   ;;]
 
 [@@@end]
@@ -312,7 +333,7 @@ let swap t i j =
         unsafe_set r i (f i (unsafe_get t i))
       done;
       r)
-  [@@kind ki = (base, value mod external64), ko = base_non_value]
+  [@@kind ki = (base_or_null, value_or_null mod external64), ko = base_non_value]
   ;;]
 
 [%%template
@@ -326,7 +347,9 @@ let swap t i j =
         unsafe_set r i (f i (unsafe_get t i))
       done;
       r)
-  [@@kind ki = (base, value mod external64), ko = (value, value mod external64)]
+  [@@kind
+    ki = (base_or_null, value_or_null mod external64)
+    , ko = (value_or_null, value_or_null mod external64)]
   ;;]
 
 [@@@end]

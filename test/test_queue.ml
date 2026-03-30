@@ -8,7 +8,7 @@ module%test _ : module type of Queue = struct
 
   let does_raise = Exn.does_raise
 
-  type nonrec 'a t = 'a t [@@deriving sexp, sexp_grammar]
+  type nonrec 'a t = 'a t [@@deriving sexp ~stackify, sexp_grammar]
 
   let globalize = globalize
 

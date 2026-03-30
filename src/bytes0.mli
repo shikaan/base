@@ -128,4 +128,4 @@ external unsafe_of_string_promise_no_mutation
   -> (bytes[@local_opt])
   = "%bytes_of_string"
 
-val copy : bytes -> bytes
+val%template copy : bytes -> bytes [@@alloc a @ m = (heap_global, stack_local)]

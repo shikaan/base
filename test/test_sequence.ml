@@ -787,3 +787,17 @@ module%test [@name "Caml.Seq"] _ = struct
       |}]
   ;;
 end
+
+let%expect_test "concat_list" =
+  Base_quickcheck.Test.run_exn
+    (module struct
+      (* The inner option's role is to simulate yields. *)
+      type t = int option list list [@@deriving quickcheck, sexp_of]
+    end)
+    ~f:(fun nested_list ->
+      let sequence_list = List.map ~f:of_list nested_list |> List.map ~f:filter_opt in
+      [%test_result: int Sequence.t]
+        (concat_list sequence_list)
+        ~expect:(concat (of_list sequence_list)));
+  [%expect {| |}]
+;;

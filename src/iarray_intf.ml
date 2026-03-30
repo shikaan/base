@@ -33,6 +33,22 @@ module Definitions = struct
     include%template
       Indexed_container.S1_with_creators [@alloc stack] with type 'a t := 'a t
 
+    val%template map : 'a 'b. 'a t -> f:('a -> 'b) -> 'b t
+    [@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+    [@@mode mi = (global, local)]
+    [@@alloc a @ mo = (heap_global, stack_local)]
+
+    val%template mapi : 'a 'b. 'a t -> f:(int -> 'a -> 'b) -> 'b t
+    [@@kind ki = value_or_null, ko = value_or_null]
+    [@@mode mi = (global, local)]
+    [@@alloc a @ mo = (heap_global, stack_local)]
+
+    val%template iteri : 'a. 'a t -> f:(int -> 'a -> unit) -> unit
+    [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
+    val%template iter : 'a. 'a t -> f:('a -> unit) -> unit
+    [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
     include Invariant.S1 with type 'a t := 'a t
 
     (** Operators *)
@@ -79,7 +95,7 @@ module Definitions = struct
 
     val of_sequence : 'a Sequence.t -> 'a t
     val to_sequence : 'a t -> 'a Sequence.t
-    val of_list_rev : 'a list -> 'a t
+    val of_list_rev : 'a. 'a list -> 'a t
     val of_list_map : 'a list -> f:('a -> 'b) -> 'b t
     val of_list_mapi : 'a list -> f:(int -> 'a -> 'b) -> 'b t
     val of_list_rev_map : 'a list -> f:('a -> 'b) -> 'b t
@@ -246,6 +262,8 @@ module Definitions = struct
       (*_ [Iarray]-specific *)
 
       val last_exn : 'a t -> 'a
+      val to_array_of_immediates : 'a t -> 'a array
+      val sort_immediates : 'a t -> compare:('a -> 'a -> int) -> 'a t
 
       module Let_syntax : sig
         val return : 'a -> 'a t

@@ -188,17 +188,17 @@ module type Comparable = sig
   [@@@mode.default m = (local, global)]
 
   module%template.portable Infix (T : sig
-      type t [@@deriving compare [@mode m]]
+      type t [@@deriving compare [@mode.explicit m]]
     end) : Infix with type t := T.t
 
   module%template.portable Comparisons (T : sig
-      type t [@@deriving compare [@mode m]]
+      type t [@@deriving compare [@mode.explicit m]]
     end) : Comparisons [@mode m] with type t := T.t
 
   (** Inherit comparability from a component. *)
   module%template.portable Inherit
       (C : sig
-         type t [@@deriving compare [@mode m]]
+         type t [@@deriving compare [@mode.explicit m]]
        end)
       (T : sig
          type t [@@deriving sexp_of]
@@ -208,7 +208,7 @@ module type Comparable = sig
 
   module%template.portable
     [@modality p] Make (T : sig
-      type t [@@deriving (compare [@mode m]), sexp_of]
+      type t [@@deriving (compare [@mode.explicit m]), sexp_of]
     end) : S [@modality p] [@mode m] with type t := T.t
 
   module%template.portable Make_using_comparator (T : sig
@@ -224,7 +224,7 @@ module type Comparable = sig
     end) : S [@modality p] [@mode m] with type t := T.t
 
   module With_zero (T : sig
-      type t [@@deriving (compare [@mode m]), sexp_of]
+      type t [@@deriving (compare [@mode.explicit m]), sexp_of]
 
       val zero : t
     end) : sig

@@ -3,6 +3,9 @@ open Modes.Export
 include Buffer_intf.Definitions
 include Stdlib.Buffer
 
+(* [add_string] and [add_bytes] are eta-expand to make arguments global *)
+let add_string t s = add_string t s
+let add_bytes t s = add_bytes t s
 let contents_bytes = to_bytes
 let add_substring t s ~pos ~len = add_substring t s pos len
 let add_subbytes t s ~pos ~len = add_subbytes t s pos len

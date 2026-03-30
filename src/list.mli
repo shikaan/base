@@ -54,9 +54,12 @@ val create : 'a. len:int -> 'a -> 'a list
 val singleton : 'a. 'a -> 'a t
 
 [%%template:
+(*_ Unmangled [t] gets shadowed below, so we alias a mangled [t] to it first. *)
+type 'a t := 'a t [@@kind.explicit value_or_null]
+
 [@@@kind k = base_or_null]
 
-type 'a t := ('a t[@kind k])
+type 'a t := ('a t[@kind.explicit k])
 
 [@@@kind.default k]
 
@@ -79,6 +82,9 @@ val mem : 'a t -> 'a -> equal:('a -> 'a -> bool) -> bool [@@mode l = (local, glo
     the order of side effects is reversed: [List.init 3 ~f:print_int] prints [210]. *)
 val init : 'a. int -> f:(int -> 'a) -> 'a t
 
+(** *)
+val init_i64 : 'a. int64 -> f:(int64 -> 'a) -> 'a t
+
 val append : 'a. 'a t -> 'a t -> 'a t
 val filteri : 'a. 'a t -> f:(int -> 'a -> bool) -> 'a t
 val filter : 'a. 'a t -> f:('a -> bool) -> 'a t
@@ -98,8 +104,8 @@ val nth_or_null : 'a t -> int -> 'a or_null]
 
 [%%template:
 [@@@kind.default ka = base_or_null, kb = base_or_null]
-[@@@mode.default ma = (local, global)]
-[@@@alloc.default __ @ mb = (heap_global, stack_local)]
+[@@@mode.default la = (local, global)]
+[@@@alloc.default __ @ lb = (heap_global, stack_local)]
 
 val map : 'a 'b. ('a t[@kind ka]) -> f:('a -> 'b) -> ('b t[@kind kb])
 val mapi : 'a 'b. ('a t[@kind ka]) -> f:(int -> 'a -> 'b) -> ('b t[@kind kb])
@@ -125,8 +131,19 @@ val concat_mapi
   ('a t[@kind ka]) -> f:(int -> 'a -> ('b t[@kind kb])) -> ('b t[@kind kb])]
 
 [%%template:
+[@@@kind.default ka = base_or_null]
+[@@@mode.default li = (global, local)]
+[@@@alloc.default __ @ lo = (heap_global, stack_local)]
+
+(** Like [filter_map] but with a function returning [or_null] instead of [option]. *)
+val filter_map_or_null : 'a 'b. ('a t[@kind ka]) -> f:('a -> 'b or_null) -> 'b t
+
+(** Like [filter_mapi] but with a function returning [or_null] instead of [option]. *)
+val filter_mapi_or_null : 'a 'b. ('a t[@kind ka]) -> f:(int -> 'a -> 'b or_null) -> 'b t]
+
+[%%template:
 [@@@kind.default ka = base_or_null, kb = base_or_null]
-[@@@mode.default ma = (local, global), mb = (local, global)]
+[@@@mode.default la = (local, global), lb = (local, global)]
 
 val fold : 'a 'b. ('a t[@kind ka]) -> init:'b -> f:('b -> 'a -> 'b) -> 'b
 val foldi : 'a 'b. ('a t[@kind ka]) -> init:'b -> f:(int -> 'b -> 'a -> 'b) -> 'b]
@@ -136,11 +153,14 @@ val foldi : 'a 'b. ('a t[@kind ka]) -> init:'b -> f:(int -> 'b -> 'a -> 'b) -> '
     either list is empty. *)
 val unordered_append : 'a. 'a t -> 'a t -> 'a t
 
+[%%template:
+[@@@mode.default l = (global, local)]
+
 (** [iter2 [a1; ...; an] [b1; ...; bn] ~f] calls in turn [f a1 b1; ...; f an bn]. The exn
     version will raise if the two lists have different lengths. *)
 val iter2_exn : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit
 
-val iter2 : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit Or_unequal_lengths.t
+val iter2 : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit Or_unequal_lengths.t]
 
 (** [rev_map2_exn l1 l2 ~f] gives the same result as [List.rev (List.map2_exn l1 l2 ~f)],
     but is more efficient. *)
@@ -185,15 +205,20 @@ val exists2 : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> bool) -> bool Or_unequal_len
 (** Like [filter], but reverses the order of the input list. *)
 val rev_filter : 'a. 'a t -> f:('a -> bool) -> 'a t
 
+val%template partition_map : 'a 'b 'c. 'a t -> f:('a -> ('b, 'c) Either0.t) -> 'b t * 'c t
+[@@mode li = (global, local)] [@@alloc __ @ lo = (heap_global, stack_local)]
+
 val partition3_map
   : 'a 'b 'c 'd.
   'a t -> f:('a -> [ `Fst of 'b | `Snd of 'c | `Trd of 'd ]) -> 'b t * 'c t * 'd t
 
+[%%template:
+[@@@alloc.default a @ l = (heap_global, stack_local)]
+
 (** [partition_result l] returns a pair of lists [(l1, l2)], where [l1] is the list of all
     [Ok] elements in [l] and [l2] is the list of all [Error] elements. The order of
     elements in the input list is preserved. *)
-val%template partition_result : 'ok 'error. ('ok, 'error) Result.t t -> 'ok t * 'error t
-[@@alloc a @ m = (heap_global, stack_local)]
+val partition_result : 'ok 'error. ('ok, 'error) Result.t t -> 'ok t * 'error t
 
 (** [split_n [e1; ...; em] n] is [([e1; ...; en], [en+1; ...; em])].
 
@@ -203,9 +228,7 @@ val%template partition_result : 'ok 'error. ('ok, 'error) Result.t t -> 'ok t * 
     In either of these cases, the input list is returned as one side of the pair, rather
     than being copied. *)
 val split_n : 'a. 'a t -> int -> 'a t * 'a t
-
-[%%template:
-[@@@alloc.default __ @ l = (heap_global, stack_local)]
+[@@zero_alloc_if_stack a]
 
 (** Sort a list in increasing order according to a comparison function. The comparison
     function must return 0 if its arguments compare as equal, a positive integer if the
@@ -214,7 +237,8 @@ val split_n : 'a. 'a t -> int -> 'a t * 'a t
     function.
 
     The current implementation uses Merge Sort. It runs in linear heap space and
-    logarithmic stack space.
+    logarithmic stack space. The stack-allocating versions of sorting functions
+    additionally allocate O(n log n) space in the caller's region.
 
     Presently, the sort is stable, meaning that two equal elements in the input will be in
     the same order in the output. *)
@@ -228,6 +252,9 @@ val stable_sort : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t]
     elements of [l1] and [l2]. If several elements compare equal, the elements of [l1]
     will be before the elements of [l2]. *)
 val merge : 'a. 'a t -> 'a t -> compare:('a -> 'a -> int) -> 'a t
+
+[%%template:
+[@@@mode.default l = (global, local)]
 
 val hd : 'a. 'a t -> 'a option
 val tl : 'a. 'a t -> 'a t option
@@ -243,7 +270,7 @@ val findi_exn : 'a. 'a t -> f:(int -> 'a -> bool) -> int * 'a
 
 (** [find_exn t ~f] returns the first element of [t] that satisfies [f]. It raises
     [Stdlib.Not_found] or [Not_found_s] if there is no such element. *)
-val find_exn : 'a. 'a t -> f:('a -> bool) -> 'a
+val find_exn : 'a. 'a t -> f:('a -> bool) -> 'a]
 
 (** Returns the first evaluation of [f] that returns [Some]. Raises [Stdlib.Not_found] or
     [Not_found_s] if [f] always returns [None]. *)
@@ -252,13 +279,18 @@ val find_map_exn : 'a 'b. 'a t -> f:('a -> 'b option) -> 'b
 (** Like [find_map_exn], but passes the index as an argument. *)
 val find_mapi_exn : 'a 'b. 'a t -> f:(int -> 'a -> 'b option) -> 'b
 
-(** [folding_map] is a version of [map] that threads an accumulator through calls to [f]. *)
-
+(** [folding_map] is a version of [map] that threads an accumulator through calls to [f].
+    The accumulator is threaded left-to-right through the list, but unlike [fold_map] only
+    the mapped result list is returned; the final accumulator value is discarded. *)
 val folding_map : 'a 'b 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc * 'b) -> 'b t
 
 val folding_mapi
   : 'a 'b 'acc.
   'a t -> init:'acc -> f:(int -> 'acc -> 'a -> 'acc * 'b) -> 'b t
+
+[%%template:
+[@@@mode.default li = (global, local)]
+[@@@alloc.default a @ lo = (heap_global, stack_local)]
 
 (** [fold_map] is a combination of [fold] and [map] that threads an accumulator through
     calls to [f]. *)
@@ -273,7 +305,7 @@ val fold_mapi
     will raise if the two lists have different lengths. *)
 
 val map2_exn : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t
-val map2 : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t Or_unequal_lengths.t
+val map2 : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t Or_unequal_lengths.t]
 
 (** Analogous to [rev_map2]. *)
 
@@ -307,26 +339,34 @@ val fold_left : 'a 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc) -> 'acc
 (** Transform a list of pairs into a pair of lists: [unzip [(a1,b1); ...; (an,bn)]] is
     [([a1; ...; an], [b1; ...; bn])]. *)
 
-val unzip : 'a 'b. ('a * 'b) t -> 'a t * 'b t
+val%template unzip : 'a 'b. ('a * 'b) t -> 'a t * 'b t
+[@@alloc __ @ l = (heap_global, stack_local)]
+
 val unzip3 : 'a 'b 'c. ('a * 'b * 'c) t -> 'a t * 'b t * 'c t
 
 (** Transform a pair of lists into an (optional) list of pairs:
     [zip [a1; ...; an] [b1; ...; bn]] is [[(a1,b1); ...; (an,bn)]]. Returns
     [Unequal_lengths] if the two lists have different lengths. *)
 
+[%%template:
+[@@@alloc.default __ @ l = (heap_global, stack_local)]
+
 val zip : 'a 'b. 'a t -> 'b t -> ('a * 'b) t Or_unequal_lengths.t
-val zip_exn : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
+val zip_exn : 'a 'b. 'a t -> 'b t -> ('a * 'b) t]
 
 (** Analogous to [zip], but with 3 lists rather than 2. *)
 
 val zip3 : 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t Or_unequal_lengths.t
 val zip3_exn : 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
 
+[%%template:
+[@@@mode.default l = (global, local)]
+
 (** [reduce_exn [a1; ...; an] ~f] is [f (... (f (f a1 a2) a3) ...) an]. It fails on the
     empty list. Tail recursive. *)
-val reduce_exn : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a
-
 val reduce : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a option
+
+val reduce_exn : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a]
 
 (** [reduce_balanced] returns the same value as [reduce] when [f] is associative, but
     differs in that the tree of nested applications of [f] has logarithmic depth.
@@ -337,6 +377,9 @@ val reduce : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a option
 val reduce_balanced : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a option
 
 val reduce_balanced_exn : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a
+
+[%%template:
+[@@@alloc.default __ @ l = (heap_global, stack_local)]
 
 (** [group l ~break] returns a list of lists (i.e., groups) whose concatenation is equal
     to the original list. Each group is broken where [break] returns true on a pair of
@@ -362,7 +405,7 @@ val group : 'a. 'a t -> break:('a -> 'a -> bool) -> 'a t t
 
       [['M'; 'i'; 's']; ['s'; 'i'; 's']; ['s'; 'i'; 'p']; ['p'; 'i']]
     ]} *)
-val groupi : 'a. 'a t -> break:(int -> 'a -> 'a -> bool) -> 'a t t
+val groupi : 'a. 'a t -> break:(int -> 'a -> 'a -> bool) -> 'a t t]
 
 (** Group equal elements into the same buckets. Sorting is stable. *)
 val sort_and_group : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t t
@@ -370,7 +413,8 @@ val sort_and_group : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t t
 (** [chunks_of l ~length] returns a list of lists whose concatenation is equal to the
     original list. Every list has [length] elements, except for possibly the last list,
     which may have fewer. [chunks_of] raises if [length <= 0]. *)
-val chunks_of : 'a. 'a t -> length:int -> 'a t t
+val%template chunks_of : 'a. 'a t -> length:int -> 'a t t
+[@@zero_alloc_if_stack a] [@@alloc a @ l = (heap_global, stack_local)]
 
 (** [chunk_evenly l ~into] returns a list of exactly [into] lists whose concatenation is
     equal to the original list. The number of items in each list are split as evenly as
@@ -410,7 +454,8 @@ val remove_consecutive_duplicates
 
 (** Returns the given list with duplicates removed and in sorted order. Of duplicates in
     the original list, the element occurring last in the original list is kept. *)
-val dedup_and_sort : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
+val%template dedup_and_sort : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
+[@@alloc __ @ l = (heap_global, stack_local)]
 
 (** Returns the original list, dropping all occurrences of duplicates after the first. *)
 val stable_dedup : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
@@ -472,7 +517,17 @@ val rev_filter_map : 'a 'b. 'a t -> f:('a -> 'b option) -> 'b t
 
 (** rev_filter_mapi is just like [rev_filter_map], but it also passes in the index of each
     element as the first argument to the mapped function. Tail-recursive. *)
-val rev_filter_mapi : 'a 'b. 'a t -> f:(int -> 'a -> 'b option) -> 'b t]
+val rev_filter_mapi : 'a 'b. 'a t -> f:(int -> 'a -> 'b option) -> 'b t
+
+(** Like [filter_opt] but for [or_null] instead of [option]. In other words,
+    [filter_or_null l] = [filter_map_or_null ~f:Fn.id l]. *)
+val filter_or_null : 'a or_null t -> 'a t
+
+(** Like [rev_filter_map] but with a function returning [or_null] instead of [option]. *)
+val rev_filter_map_or_null : 'a t -> f:('a -> 'b or_null) -> 'b t
+
+(** Like [rev_filter_mapi] but with a function returning [or_null] instead of [option]. *)
+val rev_filter_mapi_or_null : 'a t -> f:(int -> 'a -> 'b or_null) -> 'b t]
 
 (** Create a list of every value [iter] passes to [f], in chronological order. *)
 val of_iter : 'a. iter:(f:('a -> unit) -> unit) -> 'a t
@@ -528,9 +583,12 @@ end
 (** [sub pos len l] is the [len]-element sublist of [l], starting at [pos]. *)
 val sub : 'a. 'a t -> pos:int -> len:int -> 'a t
 
+[%%template:
+[@@@alloc.default a @ l = (heap_global, stack_local)]
+
 (** [take l n] returns the first [n] elements of [l], or all of [l] if [n > length l].
     [take l n = fst (split_n l n)]. If [n >= length l], returns [l] rather than a copy. *)
-val take : 'a. 'a t -> int -> 'a t
+val take : 'a. 'a t -> int -> 'a t]
 
 (** [drop l n] returns [l] without the first [n] elements, or the empty list if
     [n > length l]. [drop l n] is equivalent to [snd (split_n l n)]. If [n <= 0], returns
@@ -559,7 +617,8 @@ val cons : 'a. 'a -> 'a t -> 'a t
 
 (** Returns a list with all possible pairs -- if the input lists have length [len1] and
     [len2], the resulting list will have length [len1 * len2]. *)
-val cartesian_product : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
+val%template cartesian_product : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
+[@@alloc __ @ l = (heap_global, stack_local)]
 
 (** [permute ?random_state t] returns a permutation of [t].
 
@@ -588,6 +647,9 @@ module Infix : sig
   val ( @ ) : 'a. 'a t -> 'a t -> 'a t
 end
 
+[%%template:
+[@@@alloc.default __ @ l = (heap_global, stack_local)]
+
 (** [transpose m] transposes the rows and columns of the matrix [m], considered as either
     a row of column lists or (dually) a column of row lists.
 
@@ -604,11 +666,32 @@ val transpose : 'a. 'a t t -> 'a t t option
 
 (** [transpose_exn] transposes the rows and columns of its argument, throwing an exception
     if the list is not rectangular. *)
-val transpose_exn : 'a. 'a t t -> 'a t t
+val transpose_exn : 'a. 'a t t -> 'a t t]
 
 (** [intersperse xs ~sep] places [sep] between adjacent elements of [xs]. For example,
     [intersperse [1;2;3] ~sep:0 = [1;0;2;0;3]]. *)
 val intersperse : 'a. 'a t -> sep:'a -> 'a t
+
+module Local : sig
+  module Let_syntax : sig
+    val return : 'a. 'a -> 'a t
+
+    (** Pronounced "map". Infix form of [map]. *)
+    val ( >>| ) : 'a 'b. 'a t -> ('a -> 'b) -> 'b t
+
+    (** Pronounced "bind". Infix form of [bind]. *)
+    val ( >>= ) : 'a 'b. 'a t -> ('a -> 'b t) -> 'b t
+
+    module Let_syntax : sig
+      val return : 'a. 'a -> 'a t
+      val map : 'a 'b. 'a t -> f:('a -> 'b) -> 'b t
+      val bind : 'a 'b. 'a t -> f:('a -> 'b t) -> 'b t
+      val both : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
+
+      module Open_on_rhs : sig end
+    end
+  end
+end
 
 module Private : sig
   val max_non_tailcall : int

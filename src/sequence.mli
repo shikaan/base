@@ -115,6 +115,10 @@ val mapi : 'a 'b. 'a t -> f:(int -> 'a -> 'b) -> 'b t
 val filteri : 'a. 'a t -> f:(int -> 'a -> bool) -> 'a t
 val filter : 'a. 'a t -> f:('a -> bool) -> 'a t
 
+val fold_result
+  : 'a 'acc 'e.
+  'a t -> init:'acc -> f:('acc -> 'a -> ('acc, 'e) Result.t) -> ('acc, 'e) Result.t
+
 (** If [t1] and [t2] are each sorted without duplicates,
     [merge_deduped_and_sorted t1 t2 ~compare] merges [t1] and [t2] into a sorted sequence
     without duplicates. Whenever identical elements are found in both [t1] and [t2], the
@@ -172,6 +176,9 @@ val concat_map : 'a 'b. 'a t -> f:('a -> 'b t) -> 'b t
 
 (** [concat_mapi t ~f] is like concat_map, but passes the index as an argument. *)
 val concat_mapi : 'a 'b. 'a t -> f:(int -> 'a -> 'b t) -> 'b t
+
+(** [concat_list t] is like [concat (of_list t)]. *)
+val concat_list : 'a. 'a t list -> 'a t
 
 (** [interleave tt] produces each element of the inner sequences of [tt] eventually, even
     if any or all of the inner sequences are infinite. The elements of each inner sequence
@@ -373,6 +380,8 @@ val iter_m
   -> 'elt t
   -> f:('elt -> 'unit_m)
   -> 'unit_m
+
+val iter : 'a. 'a t -> f:('a -> unit) -> unit
 
 (** [to_list_rev t] returns a list of the elements of [t], in reverse order. It is faster
     than [to_list]. *)

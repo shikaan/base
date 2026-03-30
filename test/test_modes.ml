@@ -11,10 +11,11 @@ module _ : Modes.At_locality.Without_crossing = struct
   type actually_local = Modes.At_locality.actually_local
 
   type global = Modes.At_locality.global
-  [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+  [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
 
   type local = Modes.At_locality.local
-  [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+  [@@deriving
+    compare ~localize, equal ~localize, hash, sexp_of ~localize ~stackify, sexp_grammar]
 
   type (+'a, 'locality) t =
     | Local : 'a -> ('a, local) t

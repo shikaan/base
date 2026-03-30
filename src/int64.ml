@@ -3,14 +3,21 @@ open! Stdlib.Int64
 module Sexp = Sexp0
 
 module T = struct
-  type t = int64 [@@deriving globalize, hash, sexp ~stackify, sexp_grammar]
+  module T0 = struct
+    type t = int64 [@@deriving globalize, hash, of_sexp, sexp_grammar]
+
+    let%template[@alloc a = (heap, stack)] to_string =
+      (Integer_to_string.int64_to_string [@alloc a])
+    ;;
+  end
+
+  include T0
+  include Int_string_conversions.Make (T0)
 
   let hashable : t Hashable.t = { hash; compare; sexp_of_t }
   let compare = Int64_replace_polymorphic_compare.compare
 
   external format : string -> int64 -> string = "caml_int64_format"
-
-  let to_string = Integer_to_string.int64_to_string
 
   external of_string
     :  string
@@ -291,7 +298,6 @@ module Pow2 = struct
 end
 
 include Pow2
-include Int_string_conversions.Make (T)
 
 include Int_string_conversions.Make_hex (struct
     type t = int64 [@@deriving compare ~localize, hash]

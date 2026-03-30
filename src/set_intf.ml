@@ -3,7 +3,7 @@ module Sexp = Sexp0
 
 module Definitions = struct
   module type%template Elt_plain = sig
-    type t [@@deriving (compare [@mode m]), sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
   end
   [@@mode m = (local, global)]
 
@@ -309,13 +309,16 @@ module Definitions = struct
     val compare_m__t : (module Compare_m) -> ('elt, 'cmp) t -> ('elt, 'cmp) t -> int
     val equal_m__t : (module Equal_m) -> ('elt, 'cmp) t -> ('elt, 'cmp) t -> bool
 
-    val compare_m__t__local
+    val%template compare_m__t
       :  (module Compare_m)
       -> ('elt, 'cmp) t
       -> ('elt, 'cmp) t
       -> int
+    [@@mode local]
 
-    val equal_m__t__local : (module Equal_m) -> ('elt, 'cmp) t -> ('elt, 'cmp) t -> bool
+    val%template equal_m__t : (module Equal_m) -> ('elt, 'cmp) t -> ('elt, 'cmp) t -> bool
+    [@@mode local]
+
     val globalize_m__t : (module Globalize_m) -> ('elt, 'cmp) t -> ('elt, 'cmp) t
 
     val hash_fold_m__t
@@ -327,78 +330,96 @@ module Definitions = struct
     val hash_m__t : (module Hash_fold_m with type t = 'elt) -> ('elt, _) t -> int
   end
 
-  (**/**)
+  module type Enum = sig
+    type ('a, 'cmp) tree
 
-  (*_ See the Jane Street Style Guide for an explanation of [Private] submodules:
+    (** Phantom types, to avoid mixing up enumeration directions. *)
 
-      https://opensource.janestreet.com/standards/#private-submodules *)
-  module Private = struct
-    module type Enum = sig
-      type ('a, 'cmp) tree
+    type increasing
+    type decreasing
 
-      (** Phantom types, to avoid mixing up enumeration directions. *)
+    (** Enum type *)
 
-      type increasing
-      type decreasing
+    type ('a, 'cmp, 'direction) nonempty
 
-      (** Enum type *)
+    and ('a, 'cmp, 'direction) t = ('a, 'cmp, 'direction) nonempty or_null
+    [@@deriving sexp_of]
 
-      type ('a, 'cmp, 'direction) nonempty =
-        | More of 'a * ('a, 'cmp) tree * ('a, 'cmp, 'direction) t
+    (** Conversions, for testing purposes *)
 
-      and ('a, 'cmp, 'direction) t = ('a, 'cmp, 'direction) nonempty or_null
+    val to_list_with_trees : ('a, 'cmp, 'dir) t -> ('a * ('a, 'cmp) tree) list
+    val of_list_with_trees : ('a * ('a, 'cmp) tree) list -> ('a, 'cmp, 'dir) t
 
-      (** Constructors *)
+    (** Constructors *)
 
-      val cons : ('a, 'cmp) tree -> ('a, 'cmp, increasing) t -> ('a, 'cmp, increasing) t
+    val cons : ('a, 'cmp) tree -> ('a, 'cmp, increasing) t -> ('a, 'cmp, increasing) t
 
-      val cons_right
-        :  ('a, 'cmp) tree
-        -> ('a, 'cmp, decreasing) t
-        -> ('a, 'cmp, decreasing) t
+    val cons_right
+      :  ('a, 'cmp) tree
+      -> ('a, 'cmp, decreasing) t
+      -> ('a, 'cmp, decreasing) t
 
-      val of_set : ('a, 'cmp) tree -> ('a, 'cmp, increasing) t
-      val of_set_right : ('a, 'cmp) tree -> ('a, 'cmp, decreasing) t
+    val of_set : ('a, 'cmp) tree -> ('a, 'cmp, increasing) t
+    val of_set_right : ('a, 'cmp) tree -> ('a, 'cmp, decreasing) t
 
-      val starting_at_increasing
-        :  ('a, 'cmp) tree
-        -> 'a
-        -> ('a -> 'a -> int)
-        -> ('a, 'cmp, increasing) t
+    val starting_at_increasing
+      :  ('a, 'cmp) tree
+      -> 'a
+      -> ('a -> 'a -> int)
+      -> ('a, 'cmp, increasing) t
 
-      val starting_at_decreasing
-        :  ('a, 'cmp) tree
-        -> 'a
-        -> ('a -> 'a -> int)
-        -> ('a, 'cmp, decreasing) t
+    val starting_at_decreasing
+      :  ('a, 'cmp) tree
+      -> 'a
+      -> ('a -> 'a -> int)
+      -> ('a, 'cmp, decreasing) t
 
-      (** Comparing two enums, or two trees using enums behind the scenes *)
+    (** Accessors *)
 
-      val symmetric_diff
-        :  ('a, 'cmp) tree
-        -> ('a, 'cmp) tree
-        -> compare_elt:('a -> 'a -> int)
-        -> ('a, 'a) Either0.t Sequence.t
+    val elt : ('a, 'cmp, 'dir) nonempty -> 'a
+    val next : ('a, 'cmp, increasing) nonempty -> ('a, 'cmp, increasing) t
+    val next_decreasing : ('a, 'cmp, decreasing) nonempty -> ('a, 'cmp, decreasing) t
 
-      val compare
-        :  ('a -> 'a -> int)
-        -> ('a, 'cmp, increasing) t
-        -> ('a, 'cmp, increasing) t
-        -> int
+    (** Accessing first element(s) of two enums *)
 
-      (** Traversing two enums *)
-
-      val iter2
-        :  ('a -> 'a -> int)
-        -> ('a, 'cmp, increasing) t
-        -> ('a, 'cmp, increasing) t
-        -> f:(('a, 'a) Map.Merge_element.t -> unit)
-        -> unit
-
-      (** Traversing one enum *)
-
-      val iter : f:('a -> unit) -> ('a, 'cmp, increasing) t -> unit
+    module Which : sig
+      type t =
+        | Left
+        | Right
+        | Both
     end
+
+    val which
+      :  ('a, 'cmp, increasing) nonempty
+      -> ('a, 'cmp, increasing) nonempty
+      -> compare_elt:('a -> 'a -> int)
+      -> Which.t
+
+    val which_elt
+      :  ('a, 'cmp, increasing) nonempty
+      -> ('a, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> 'a
+
+    val which_merge_element
+      :  ('a, 'cmp, increasing) nonempty
+      -> ('a, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> ('a, 'a) Map.Merge_element.t
+
+    val next2
+      :  ('a, 'cmp, increasing) nonempty
+      -> ('a, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> ('a, 'cmp, increasing) t * ('a, 'cmp, increasing) t
+
+    (** Unlike [Map.Tree.Enum.next2_drop_phys_equal], this implementation currently only
+        drops a single tree at the front of the enum. *)
+    val next2_drop_phys_equal
+      :  ('a, 'cmp, increasing) nonempty
+      -> ('a, 'cmp, increasing) nonempty
+      -> which:Which.t
+      -> ('a, 'cmp, increasing) t * ('a, 'cmp, increasing) t
   end
 end
 
@@ -416,7 +437,8 @@ module type Set = sig
       the second identifies the comparator, which determines the comparison function that
       is used for ordering elements in this set. Many operations (e.g., {!union}), require
       that they be passed sets with the same element type and the same comparator type. *)
-  type (!'elt, !'cmp) t [@@deriving compare ~localize, globalize]
+  type (!'elt, !'cmp) t
+  [@@sexp.phantom: 'cmp] [@@deriving compare ~localize, globalize, sexp_of]
 
   (** Tests internal invariants of the set data structure. Returns true on success. *)
   val invariants : (_, _) t -> bool
@@ -861,7 +883,7 @@ module type Set = sig
           ; right : ('a, 'cmp) t [@globalized]
           ; weight : weight
           }
-    [@@deriving globalize, sexp_of]
+    [@@sexp.phantom: 'cmp] [@@deriving globalize, sexp_of]
 
     val t_of_sexp_direct
       :  comparator:('elt, 'cmp) Comparator.t
@@ -883,11 +905,13 @@ module type Set = sig
 
     val empty_without_value_restriction : (_, _) t
 
+    module Enum : Enum with type ('a, 'cmp) tree := ('a, 'cmp) t
+
     (** Low-level constructors for balanced trees. If not carefully used, the results
         might violate the normal invariants of a tree. *)
     module Expert : sig
       (** Sexp prints the internal node structure. *)
-      type nonrec ('a, 'cmp) t = ('a, 'cmp) t [@@deriving sexp_of]
+      type nonrec ('a, 'cmp) t = ('a, 'cmp) t [@@deriving equal ~localize, sexp_of]
 
       (** Just the tree balance checks from [invariants]. Excludes the checks in
           [order_invariants]. *)
@@ -978,7 +1002,8 @@ module type Set = sig
       functions take a [~comparator:('elt, 'cmp) Comparator.t] where the functions at the
       toplevel of [Set] takes a [('elt, 'cmp) comparator]. *)
   module Using_comparator : sig
-    type nonrec ('elt, 'cmp) t = ('elt, 'cmp) t [@@deriving sexp_of]
+    type nonrec ('elt, 'cmp) t = ('elt, 'cmp) t
+    [@@sexp.phantom: 'cmp] [@@deriving sexp_of]
 
     val t_of_sexp_direct
       :  comparator:('elt, 'cmp) Comparator.t
@@ -1022,13 +1047,4 @@ module type Set = sig
     with type 'elt tree :=
       ('elt, Comparator.Poly.comparator_witness) Using_comparator.Tree.t
     with type ('elt, 'cmp) set := ('elt, 'cmp) t
-
-  (**/**)
-
-  (*_ See the Jane Street Style Guide for an explanation of [Private] submodules:
-
-      https://opensource.janestreet.com/standards/#private-submodules *)
-  module Private : sig
-    module Enum : Private.Enum with type ('a, 'cmp) tree := ('a, 'cmp) Tree.t
-  end
 end

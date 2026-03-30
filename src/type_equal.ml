@@ -19,7 +19,8 @@ let%template conv (type a b) (T : (a, b) t) (a : a) : b = a
 ;;
 
 [%%template
-[@@@kind.default k1 = (any, value)]
+[@@@kind_set.define smaller_all = (any, value)]
+[@@@kind_set.define all = (smaller_all, value_or_null)]
 
 module Lift (X : sig
     type 'a t
@@ -27,8 +28,9 @@ module Lift (X : sig
 struct
   let lift (type a b) (T : (a, b) t) : (a X.t, b X.t) t = T
 end
+[@@kind.explicit k1 = all]
 
-[@@@kind.default k2 = (any, value)]
+module Lift = Lift [@kind.explicit value]
 
 module Lift2 (X : sig
     type ('a1, 'a2) t
@@ -40,8 +42,11 @@ struct
     T
   ;;
 end
+[@@kind.explicit k1 = all, k2 = all]
 
-[@@@kind.default k3 = (any, value)]
+module Lift2 = Lift2 [@kind.explicit value value]
+
+[@@@kind.default k1 = smaller_all, k2 = smaller_all, k3 = smaller_all]
 
 module Lift3 (X : sig
     type ('a1, 'a2, 'a3) t
@@ -54,7 +59,7 @@ struct
   ;;
 end
 
-[@@@kind.default k4 = (any, value)]
+[@@@kind.default k4 = smaller_all]
 
 module Lift4 (X : sig
     type ('a1, 'a2, 'a3, 'a4) t
@@ -121,7 +126,7 @@ module Id = struct
     }
 
   let%template uid a = a.uid [@@mode m = (global, local)]
-  let name a = a.id_name
+  let%template[@mode m = (global, local)] name a = a.id_name
   let sexp_of_t _ a = a.id_sexp
   let to_sexp a = a.sexp_of_t
   let hash t = Uid.hash (uid t)

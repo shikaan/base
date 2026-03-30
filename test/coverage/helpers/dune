@@ -2,4 +2,4 @@
  (name base_test_coverage_helpers)
  (libraries base expect_test_helpers_core.expect_test_helpers_base stdio)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane -compare-require-explicit-locality)))

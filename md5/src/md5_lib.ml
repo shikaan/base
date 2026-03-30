@@ -16,8 +16,8 @@ let of_binary_exn s =
 ;;
 
 let unsafe_of_binary = make
-let unsafe_of_binary_local = make_local
-let unsafe_of_binary__local = make_local
+let[@zero_alloc] unsafe_of_binary_local s = make_local s
+let[@zero_alloc] unsafe_of_binary__local s = make_local s
 
 external globalize : t -> t = "caml_obj_dup"
 

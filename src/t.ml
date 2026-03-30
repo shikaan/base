@@ -7,25 +7,30 @@ module type T = sig
 end
 
 [%%template
-[@@@kind.default ka = (any, value)]
+[@@@kind_set.define smaller_all = (any, value)]
+[@@@kind_set.define all = (smaller_all, value_or_null)]
 
 module type T1 = sig
   type 'a t
 end
+[@@kind.explicit ka = all]
 
-[@@@kind.default kb = (any, value)]
+module type T1 = T1 [@kind.explicit value]
 
 module type T2 = sig
   type ('a, 'b) t
 end
+[@@kind.explicit ka = all, kb = all]
 
-[@@@kind.default kc = (any, value)]
+module type T2 = T2 [@kind.explicit value value]
+
+[@@@kind.default ka = smaller_all, kb = smaller_all, kc = smaller_all]
 
 module type T3 = sig
   type ('a, 'b, 'c) t
 end
 
-[@@@kind.default kd = (any, value)]
+[@@@kind.default kd = smaller_all]
 
 module type T4 = sig
   type ('a, 'b, 'c, 'd) t

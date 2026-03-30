@@ -23,9 +23,6 @@ include%template Comparator.Make [@modality portable] (T)
    versions of the comparison functions are exported by this module. *)
 open Float_replace_polymorphic_compare
 
-external ceil : (t[@local_opt]) -> t = "caml_ceil_float" "ceil" [@@unboxed] [@@noalloc]
-external floor : (t[@local_opt]) -> t = "caml_floor_float" "floor" [@@unboxed] [@@noalloc]
-
 external mod_float : (t[@local_opt]) -> (t[@local_opt]) -> t = "caml_fmod_float" "fmod"
 [@@unboxed] [@@noalloc]
 
@@ -107,6 +104,10 @@ external cosh : (t[@local_opt]) -> t = "caml_cosh_float" "cosh" [@@unboxed] [@@n
 external sinh : (t[@local_opt]) -> t = "caml_sinh_float" "sinh" [@@unboxed] [@@noalloc]
 external tanh : (t[@local_opt]) -> t = "caml_tanh_float" "tanh" [@@unboxed] [@@noalloc]
 external sqrt : (t[@local_opt]) -> t = "caml_sqrt_float" "sqrt" [@@unboxed] [@@noalloc]
+
+external cbrt : (t[@local_opt]) -> t = "caml_cbrt_float" "caml_cbrt"
+[@@unboxed] [@@noalloc]
+
 external exp : (t[@local_opt]) -> t = "caml_exp_float" "exp" [@@unboxed] [@@noalloc]
 external log : (t[@local_opt]) -> t = "caml_log_float" "log" [@@unboxed] [@@noalloc]
 
@@ -295,79 +296,6 @@ let to_int64 = Int64.of_float
 let iround_lbound = lower_bound_for_int Int.num_bits
 let iround_ubound = upper_bound_for_int Int.num_bits
 
-(* The performance of the "exn" rounding functions is important, so they are written out
-   separately, and tuned individually. (We could have the option versions call the "exn"
-   versions, but that imposes arguably gratuitous overhead---especially in the case where
-   the capture of backtraces is enabled upon "with"---and that seems not worth it when
-   compared to the relatively small amount of code duplication.) *)
-
-(* Error reporting below is very carefully arranged so that, e.g., [iround_nearest_exn]
-   itself can be inlined into callers such that they don't need to allocate a box for the
-   [float] argument. This is done with a box [box] function carefully chosen to allow the
-   compiler to create a separate box for the float only in error cases. See, e.g.,
-   [../../zero/test/price_test.ml] for a mechanical test of this property when building
-   with [X_LIBRARY_INLINING=true]. *)
-
-let iround_up t =
-  if t > 0.0
-  then (
-    let t' = ceil t in
-    if t' <= iround_ubound then Some (Int.of_float_unchecked t') else None)
-  else if t >= iround_lbound
-  then Some (Int.of_float_unchecked t)
-  else None
-;;
-
-let[@ocaml.inline always] iround_up_exn t =
-  if t > 0.0
-  then (
-    let t' = ceil t in
-    if t' <= iround_ubound
-    then Int.of_float_unchecked t'
-    else invalid_argf "Float.iround_up_exn: argument (%f) is too large" (box t) ())
-  else if t >= iround_lbound
-  then Int.of_float_unchecked t
-  else invalid_argf "Float.iround_up_exn: argument (%f) is too small or NaN" (box t) ()
-;;
-
-let iround_down t =
-  if t >= 0.0
-  then if t <= iround_ubound then Some (Int.of_float_unchecked t) else None
-  else (
-    let t' = floor t in
-    if t' >= iround_lbound then Some (Int.of_float_unchecked t') else None)
-;;
-
-let[@ocaml.inline always] iround_down_exn t =
-  if t >= 0.0
-  then
-    if t <= iround_ubound
-    then Int.of_float_unchecked t
-    else invalid_argf "Float.iround_down_exn: argument (%f) is too large" (box t) ()
-  else (
-    let t' = floor t in
-    if t' >= iround_lbound
-    then Int.of_float_unchecked t'
-    else
-      invalid_argf "Float.iround_down_exn: argument (%f) is too small or NaN" (box t) ())
-;;
-
-let iround_towards_zero t =
-  if t >= iround_lbound && t <= iround_ubound
-  then Some (Int.of_float_unchecked t)
-  else None
-;;
-
-let[@ocaml.inline always] iround_towards_zero_exn t =
-  if t >= iround_lbound && t <= iround_ubound
-  then Int.of_float_unchecked t
-  else
-    invalid_argf
-      "Float.iround_towards_zero_exn: argument (%f) is out of range or NaN"
-      (box t)
-      ()
-;;
-
 (* Outside of the range (round_nearest_lb..round_nearest_ub), all representable doubles
    are integers in the mathematical sense, and [round_nearest] should be identity.
 
@@ -399,36 +327,133 @@ let[@ocaml.inline always] add_half_for_round_nearest t =
   else 0.5
 ;;
 
+let round_down = Ocaml_intrinsics_kernel.Float.round_down
+let round_up = Ocaml_intrinsics_kernel.Float.round_up
+let round_towards_zero = Ocaml_intrinsics_kernel.Float.round_towards_zero
+
+(* see the comment above [round_nearest_lb] and [round_nearest_ub] for an explanation *)
+let[@ocaml.inline] round_nearest_inline t =
+  if t > round_nearest_lb && t < round_nearest_ub
+  then round_down (add_half_for_round_nearest t) [@nontail]
+  else box t
+;;
+
+let round_nearest t = (round_nearest_inline [@ocaml.inlined always]) t
+
+(* The performance of the "exn" rounding functions is important, so they are written out
+   separately, and tuned individually. (We could have the option versions call the "exn"
+   versions, but that imposes arguably gratuitous overhead---especially in the case where
+   the capture of backtraces is enabled upon "with"---and that seems not worth it when
+   compared to the relatively small amount of code duplication.) *)
+
+(* Error reporting below is very carefully arranged so that, e.g., [iround_nearest_exn]
+   itself can be inlined into callers such that they don't need to allocate a box for the
+   [float] argument. This is done with a box [box] function carefully chosen to allow the
+   compiler to create a separate box for the float only in error cases. See, e.g.,
+   [../../zero/test/price_test.ml] for a mechanical test of this property when building
+   with [X_LIBRARY_INLINING=true]. *)
+
+let iround_up_or_null t =
+  if t > 0.0
+  then (
+    let t' = round_up t in
+    if t' <= iround_ubound then This (Int.of_float_unchecked t') else Null)
+  else if t >= iround_lbound
+  then This (Int.of_float_unchecked t)
+  else Null
+;;
+
+let iround_up t = iround_up_or_null t |> Or_null.to_option
+
+let[@ocaml.inline always] iround_up_exn t =
+  if t > 0.0
+  then (
+    let t' = round_up t in
+    if t' <= iround_ubound
+    then Int.of_float_unchecked t'
+    else invalid_argf "Float.iround_up_exn: argument (%f) is too large" (box t) ())
+  else if t >= iround_lbound
+  then Int.of_float_unchecked t
+  else invalid_argf "Float.iround_up_exn: argument (%f) is too small or NaN" (box t) ()
+;;
+
+let iround_down_or_null t =
+  if t >= 0.0
+  then if t <= iround_ubound then This (Int.of_float_unchecked t) else Null
+  else (
+    let t' = round_down t in
+    if t' >= iround_lbound then This (Int.of_float_unchecked t') else Null)
+;;
+
+let iround_down t = iround_down_or_null t |> Or_null.to_option
+
+let[@ocaml.inline always] iround_down_exn t =
+  if t >= 0.0
+  then
+    if t <= iround_ubound
+    then Int.of_float_unchecked t
+    else invalid_argf "Float.iround_down_exn: argument (%f) is too large" (box t) ()
+  else (
+    let t' = round_down t in
+    if t' >= iround_lbound
+    then Int.of_float_unchecked t'
+    else
+      invalid_argf "Float.iround_down_exn: argument (%f) is too small or NaN" (box t) ())
+;;
+
+let iround_towards_zero_or_null t =
+  if t >= iround_lbound && t <= iround_ubound
+  then This (Int.of_float_unchecked t)
+  else Null
+;;
+
+let iround_towards_zero t = iround_towards_zero_or_null t |> Or_null.to_option
+
+let[@ocaml.inline always] iround_towards_zero_exn t =
+  if t >= iround_lbound && t <= iround_ubound
+  then Int.of_float_unchecked t
+  else
+    invalid_argf
+      "Float.iround_towards_zero_exn: argument (%f) is out of range or NaN"
+      (box t)
+      ()
+;;
+
 let iround_nearest_32 t =
   if t >= 0.
   then (
     let t' = add_half_for_round_nearest t in
-    if t' <= iround_ubound then Some (Int.of_float_unchecked t') else None)
+    if t' <= iround_ubound then This (Int.of_float_unchecked t') else Null)
   else (
-    let t' = floor (t +. 0.5) in
-    if t' >= iround_lbound then Some (Int.of_float_unchecked t') else None)
+    let t' = round_down (t +. 0.5) in
+    if t' >= iround_lbound then This (Int.of_float_unchecked t') else Null)
 ;;
 
 let iround_nearest_64 t =
   if t >= 0.
   then
     if t < round_nearest_ub
-    then Some (Int.of_float_unchecked (add_half_for_round_nearest t))
+    then This (Int.of_float_unchecked (add_half_for_round_nearest t))
     else if t <= iround_ubound
-    then Some (Int.of_float_unchecked t)
-    else None
+    then This (Int.of_float_unchecked t)
+    else Null
   else if t > round_nearest_lb
-  then Some (Int.of_float_unchecked (floor (t +. 0.5)))
+  then This (Int.of_float_unchecked (round_down (t +. 0.5)))
   else if t >= iround_lbound
-  then Some (Int.of_float_unchecked t)
-  else None
+  then This (Int.of_float_unchecked t)
+  else Null
 ;;
 
-let iround_nearest =
+let iround_nearest_or_null =
   match Word_size.word_size with
   | W64 -> iround_nearest_64
   | W32 -> iround_nearest_32
 ;;
+
+(* We must redefine [iround_nearest_or_null] to look like a function so the compiler can
+   infer that it is [@zero_alloc]. *)
+let[@inline] iround_nearest_or_null t = iround_nearest_or_null t
+let iround_nearest t = iround_nearest_or_null t |> Or_null.to_option
 
 let iround_nearest_exn_32 t =
   if t >= 0.
@@ -438,7 +463,7 @@ let iround_nearest_exn_32 t =
     then Int.of_float_unchecked t' [@nontail]
     else invalid_argf "Float.iround_nearest_exn: argument (%f) is too large" (box t) ())
   else (
-    let t' = floor (t +. 0.5) in
+    let t' = round_down (t +. 0.5) in
     if t' >= iround_lbound
     then Int.of_float_unchecked t'
     else invalid_argf "Float.iround_nearest_exn: argument (%f) is too small" (box t) ())
@@ -453,7 +478,7 @@ let[@ocaml.inline always] iround_nearest_exn_64 t =
     then Int.of_float_unchecked t
     else invalid_argf "Float.iround_nearest_exn: argument (%f) is too large" (box t) ()
   else if t > round_nearest_lb
-  then Int.of_float_unchecked (floor (t +. 0.5))
+  then Int.of_float_unchecked (round_down (t +. 0.5))
   else if t >= iround_lbound
   then Int.of_float_unchecked t
   else
@@ -508,24 +533,11 @@ end
 
 external modf : (t[@local_opt]) -> Parts.t = "caml_modf_float"
 
-let round_down = floor
-let round_up = ceil
-let round_towards_zero t = if t >= 0. then round_down t else round_up t
-
-(* see the comment above [round_nearest_lb] and [round_nearest_ub] for an explanation *)
-let[@ocaml.inline] round_nearest_inline t =
-  if t > round_nearest_lb && t < round_nearest_ub
-  then floor (add_half_for_round_nearest t) [@nontail]
-  else box t
-;;
-
-let round_nearest t = (round_nearest_inline [@ocaml.inlined always]) t
-
-let round_nearest_half_to_even t =
+let round_nearest_half_to_even' t =
   if t <= round_nearest_lb || t >= round_nearest_ub
   then box t
   else (
-    let floor = floor t in
+    let floor = round_down t in
     (* [ceil_or_succ = if t is an integer then t +. 1. else ceil t]. Faster than [ceil]. *)
     let ceil_or_succ = floor +. 1. in
     let diff_floor = t -. floor in
@@ -540,13 +552,32 @@ let round_nearest_half_to_even t =
     else ceil_or_succ)
 ;;
 
+let round_nearest_half_to_even =
+  (* We only assume the current rounding mode is half-to-even in native code. *)
+  match Sys.backend_type with
+  | Native -> Ocaml_intrinsics_kernel.Float.round_current
+  | _ -> round_nearest_half_to_even'
+;;
+
+let iround_nearest_half_to_even' t =
+  (* The result is unspecified if t is out of range *)
+  round_nearest_half_to_even' t |> to_int64
+;;
+
+let iround_nearest_half_to_even =
+  (* We only assume the current rounding mode is half-to-even in native code. *)
+  match Sys.backend_type with
+  | Native -> Ocaml_intrinsics_kernel.Float.iround_current
+  | _ -> iround_nearest_half_to_even'
+;;
+
 let int63_round_lbound = lower_bound_for_int Int63.(num_bits |> to_int_trunc)
 let int63_round_ubound = upper_bound_for_int Int63.(num_bits |> to_int_trunc)
 
 let int63_round_up_exn t =
   if t > 0.0
   then (
-    let t' = ceil t in
+    let t' = round_up t in
     if t' <= int63_round_ubound
     then Int63.of_float_unchecked t'
     else invalid_argf "Float.int63_round_up_exn: argument (%f) is too large" (box t) ())
@@ -563,7 +594,7 @@ let int63_round_down_exn t =
     then Int63.of_float_unchecked t
     else invalid_argf "Float.int63_round_down_exn: argument (%f) is too large" (box t) ()
   else (
-    let t' = floor t in
+    let t' = round_down t in
     if t' >= int63_round_lbound
     then Int63.of_float_unchecked t'
     else
@@ -674,8 +705,8 @@ let sexp_of_t t =
        if String.contains string 'E' then sexp else Atom (insert_underscores string))
 ;;
 
-let sexp_of_t__stack t =
-  let sexp = sexp_of_t__stack t in
+let%template[@alloc stack] sexp_of_t t =
+  let sexp = (sexp_of_t [@alloc stack]) t in
   match Dynamic.get Sexp.of_float_style with
   | `No_underscores -> sexp
   | `Underscores ->
@@ -697,7 +728,7 @@ let to_padded_compact_string_custom t ?(prefix = "") ~kilo ~mega ~giga ~tera ?pe
      [abs numerator < 2e52]) this should be accurate. Otherwise, the result might be a
      little bit off, but we don't really use that case. *)
   let iround_ratio_exn ~numerator ~denominator =
-    let k = floor (numerator /. denominator) in
+    let k = round_down (numerator /. denominator) in
     (* if [abs k < 2e53], then both [k] and [k +. 1.] are accurately represented, and in
        particular [k +. 1. > k]. If [denominator] is also an integer, and
        [abs (denominator *. (k +. 1)) < 2e53] (and in some other cases, too), then [lower]

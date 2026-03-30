@@ -184,8 +184,8 @@ module Definitions = struct
       :  (module M_sexp_grammar with type t = 'elt)
       -> 'elt t Sexplib0.Sexp_grammar.t
 
-    val equal_m__t : (module Equal_m) -> 'elt t -> 'elt t -> bool
-    val equal__local_m__t : (module Equal_m) -> 'elt t -> 'elt t -> bool
+    val%template equal_m__t : (module Equal_m) -> 'elt t -> 'elt t -> bool
+    [@@mode m = (local, global)]
   end
 end
 

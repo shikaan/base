@@ -4,26 +4,40 @@ include Obj_intf.Definitions
 external%template magic : 'a 'b. ('a[@local_opt]) -> ('b[@local_opt]) = "%identity"
 [@@layout_poly]
 [@@mode
-  c = (uncontended, shared, contended)
+  c = (uncontended, shared, contended, read, immutable)
   , o = (many, once)
-  , p = (nonportable, portable)
+  , p = (nonportable, shareable, portable, observing, stateless)
   , u = (aliased, unique)]
 
 external%template magic_portable : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
 [@@layout_poly]
-[@@mode c = (uncontended, shared, contended), o = (many, once), u = (aliased, unique)]
+[@@mode
+  c = (uncontended, shared, contended, read, immutable)
+  , o = (many, once)
+  , u = (aliased, unique)]
 
 external%template magic_uncontended
   : 'a.
   ('a[@local_opt]) -> ('a[@local_opt])
   = "%identity"
 [@@layout_poly]
-[@@mode o = (many, once), p = (nonportable, portable), u = (aliased, unique)]
+[@@mode
+  o = (many, once)
+  , p = (nonportable, shareable, portable, observing, stateless)
+  , u = (aliased, unique)]
 
 external%template magic_many : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
 [@@layout_poly]
 [@@mode
   c = (uncontended, shared, contended), p = (nonportable, portable), u = (aliased, unique)]
+
+external%template magic_unyielding : 'a. 'a -> 'a = "%identity"
+[@@layout_poly]
+[@@mode
+  c = (uncontended, shared, contended)
+  , o = (many, once)
+  , p = (nonportable, portable)
+  , u = (aliased, unique)]
 
 external%template magic_unique : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
 [@@layout_poly]
@@ -121,7 +135,7 @@ struct
            field i [@exclave_if_local m]
          ;;
        ]} *)
-    let[@inline always] field__local t i = field (Sys.opaque_identity t) i
+    let[@inline always] [@mode local] field t i = field (Sys.opaque_identity t) i
     let[@inline always] field t i = field (Sys.opaque_identity t) i
 
     external set_field : (t[@local_opt]) -> int -> t -> unit = "%obj_set_field"

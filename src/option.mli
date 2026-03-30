@@ -25,9 +25,14 @@ module Constructors : module type of Option0
 [@@@kind kr2 = (value & value & value)]
 [@@@kind kr3 = (value & value & value & value)]
 
+[@@@kind_set.define
+  all_ks_non_value = (base_non_value, value_or_null & (base_or_null, kr1, kr2, kr3))]
+
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
+
 type 'a t = ('a Constructors.t[@kind k])
 [@@deriving compare ~localize, equal ~localize, sexp ~stackify]
-[@@kind k = (base_non_value, value & (base, kr1, kr2, kr3))]
+[@@kind k = all_ks_non_value]
 
 type 'a t = 'a option =
   | None
@@ -49,7 +54,7 @@ include Invariant.S1 with type 'a t := 'a t
     - [Some f <*> None = None]
     - [Some f <*> Some x = Some (f x)] *)
 
-include%template
+include
   Applicative.S [@kind value_or_null mod maybe_null] [@mode local] with type 'a t := 'a t
 
 (** {3 Monadic interface}
@@ -60,44 +65,48 @@ include%template
     - [(None >>= f) = None]
     - [(Some x >>= f) = f x] *)
 
-include%template
-  Monad.S [@kind value_or_null mod maybe_null] [@mode local] with type 'a t := 'a t
+include Monad.S [@kind value_or_null mod maybe_null] [@mode local] with type 'a t := 'a t
 
 (** {2 Extracting Underlying Values} *)
 
-[%%template:
-[@@@mode.default m = (global, local)]
-[@@@kind.default k = (base_or_null, value & (base, kr1, kr2, kr3))]
+include sig
+  [@@@mode.default m = (global, local)]
+  [@@@kind.default k = all_ks]
 
-(** Extracts the underlying value if present, otherwise returns [default]. *)
-val value : 'a. ('a t[@kind k]) -> default:'a -> 'a
+  val return : 'a. 'a -> ('a t[@kind k]) [@@zero_alloc_if_local m]
 
-(** Extracts the underlying value, or raises if there is no value present. The raised
-    error can be augmented using the [~error] and [~message] optional arguments. If
-    neither is provided, the raised error will include the provided location. *)
-val value_exn
-  : 'a.
-  ?here:Stdlib.Lexing.position
-  -> ?error:Error.t
-  -> ?message:string
-  -> ('a t[@kind k])
-  -> 'a
+  (** Extracts the underlying value if present, otherwise returns [default]. *)
+  val value : 'a. ('a t[@kind k]) -> default:'a -> 'a
+  [@@zero_alloc_if_local m]
 
-(** Extracts the underlying value if present, otherwise executes and returns the result of
-    [default]. [default] is only executed if the underlying value is absent. *)
-val value_or_thunk : 'a. ('a t[@kind k]) -> default:(unit -> 'a) -> 'a
+  (** Extracts the underlying value, or raises if there is no value present. The raised
+      error can be augmented using the [~error] and [~message] optional arguments. If
+      neither is provided, the raised error will include the provided location. *)
+  val value_exn
+    : 'a.
+    ?here:Stdlib.Lexing.position
+    -> ?error:Error.t
+    -> ?message:string
+    -> ('a t[@kind k])
+    -> 'a
+  [@@zero_alloc_if_local m]
 
-val iter : 'a. ('a t[@kind k]) -> f:('a -> unit) -> unit
+  (** Extracts the underlying value if present, otherwise executes and returns the result
+      of [default]. [default] is only executed if the underlying value is absent. *)
+  val value_or_thunk : 'a. ('a t[@kind k]) -> default:(unit -> 'a) -> 'a
 
-[@@@kind ki = k]
-[@@@kind.default ko = (base_or_null, value & (base, kr1, kr2, kr3))]
+  val iter : 'a. ('a t[@kind k]) -> f:('a -> unit) -> unit
 
-(** Extracts the underlying value and applies [f] to it if present, otherwise returns
-    [default]. *)
-val value_map : 'a 'b. ('a t[@kind ki]) -> default:'b -> f:('a -> 'b) -> 'b
+  [@@@kind ki = k]
+  [@@@kind.default ko = all_ks]
 
-val map : 'a 'b. ('a t[@kind ki]) -> f:('a -> 'b) -> ('b t[@kind ko])
-val bind : 'a 'b. ('a t[@kind ki]) -> f:('a -> ('b t[@kind ko])) -> ('b t[@kind ko])]
+  (** Extracts the underlying value and applies [f] to it if present, otherwise returns
+      [default]. *)
+  val value_map : 'a 'b. ('a t[@kind ki]) -> default:'b -> f:('a -> 'b) -> 'b
+
+  val map : 'a 'b. ('a t[@kind ki]) -> f:('a -> 'b) -> ('b t[@kind ko])
+  val bind : 'a 'b. ('a t[@kind ki]) -> f:('a -> ('b t[@kind ko])) -> ('b t[@kind ko])
+end
 
 (** On [None], returns [init]. On [Some x], returns [f init x]. *)
 val fold : 'a 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc) -> 'acc
@@ -120,9 +129,9 @@ val find : 'a. 'a t -> f:('a -> bool) -> 'a option
 (** On [None], returns [None]. On [Some x], returns [f x]. *)
 val find_map : 'a 'b. 'a t -> f:('a -> 'b option) -> 'b option
 
-val%template to_list : 'a. 'a t -> 'a list [@@mode m = (global, local)]
-
+val to_list : 'a. 'a t -> 'a list [@@mode m = (global, local)]
 val to_array : 'a. 'a t -> 'a array
+val to_iarray : 'a. 'a t -> 'a iarray
 
 (** [call x f] runs an optional function [~f] on the argument. *)
 val call : 'a. 'a -> f:('a -> unit) t -> unit
@@ -145,37 +154,37 @@ val try_with : 'a. (unit -> 'a) -> 'a t
     [None] if [f] raises an exception. *)
 val try_with_join : 'a. (unit -> 'a t) -> 'a t
 
-[%%template:
-[@@@mode.default m = (global, local)]
+include sig
+  [@@@mode.default m = (global, local)]
 
-(** Wraps the [Some] constructor as a function. *)
-val some : 'a. 'a -> 'a t
+  (** Wraps the [Some] constructor as a function. *)
+  val some : 'a. 'a -> 'a t
 
-val return : 'a. 'a -> 'a t
+  (** [first_some t1 t2] returns [t1] if it has an underlying value, or [t2] otherwise. *)
+  val first_some : 'a. 'a t -> 'a t -> 'a t
 
-(** [first_some t1 t2] returns [t1] if it has an underlying value, or [t2] otherwise. *)
-val first_some : 'a. 'a t -> 'a t -> 'a t
+  (** [first_some_thunk a b] is like [first_some], but it only computes [b ()] if [a] is
+      [None] *)
+  val first_some_thunk : 'a. 'a t -> (unit -> 'a t) -> 'a t
 
-(** [first_some_thunk a b] is like [first_some], but it only computes [b ()] if [a] is
-    [None] *)
-val first_some_thunk : 'a. 'a t -> (unit -> 'a t) -> 'a t
+  (** [some_if b x] converts a value [x] to [Some x] if [b], and [None] otherwise. *)
+  val some_if : 'a. bool -> 'a -> 'a t
 
-(** [some_if b x] converts a value [x] to [Some x] if [b], and [None] otherwise. *)
-val some_if : 'a. bool -> 'a -> 'a t
-
-(** Like [some_if], but only computes [x ()] if [b] is true. *)
-val some_if_thunk : 'a. bool -> (unit -> 'a) -> 'a t]
+  (** Like [some_if], but only computes [x ()] if [b] is true. *)
+  val some_if_thunk : 'a. bool -> (unit -> 'a) -> 'a t
+end
 
 (** {2 Predicates} *)
 
-[%%template:
-[@@@kind.default k = (base_or_null, value & (base, kr1, kr2, kr3))]
+include sig
+  [@@@kind.default k = all_ks]
 
-(** [is_none t] returns true iff [t = None]. *)
-val is_none : 'a. ('a t[@kind k]) -> bool
+  (** [is_none t] returns true iff [t = None]. *)
+  val is_none : 'a. ('a t[@kind k]) -> bool
 
-(** [is_some t] returns true iff [t = Some x]. *)
-val is_some : 'a. ('a t[@kind k]) -> bool]]
+  (** [is_some t] returns true iff [t = Some x]. *)
+  val is_some : 'a. ('a t[@kind k]) -> bool
+end
 
 module Local : sig
   module Let_syntax : sig
@@ -196,4 +205,4 @@ module Local : sig
       module Open_on_rhs : sig end
     end
   end
-end
+end]

@@ -3,6 +3,8 @@
    anything special. However, [globalize_int] cannot be written this way, so we resort to
    using an [external]. *)
 
+open Basement.Or_null_shim.Export
+
 let globalize_bool = function
   | (true | false) as b -> b
 ;;
@@ -41,7 +43,7 @@ let globalize_option f = function
 ;;
 
 let globalize_or_null f = function
-  | Basement.Or_null_shim.Null -> Basement.Or_null_shim.Null
+  | Null -> Null
   | This x -> This (f x)
 ;;
 

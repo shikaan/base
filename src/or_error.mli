@@ -12,12 +12,13 @@ module Sexp := Sexp0
 
 [%%template:
   type 'a t = (('a, Error.t) Result.t[@kind k])
-  [@@deriving compare ~localize, equal ~localize, globalize, sexp]
+  [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify]
   [@@kind k = base_non_value]]
 
 (** Serialization and comparison of an [Error] force the error's lazy message. *)
 type 'a t = ('a, Error.t) Result.t
-[@@deriving compare ~localize, equal ~localize, globalize, hash, sexp, sexp_grammar]
+[@@deriving
+  compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
 
 (** [Applicative] functions don't have quite the same semantics as
     [Applicative.Of_Monad(Or_error)] would give -- [apply (Error e1) (Error e2)] returns
@@ -94,15 +95,18 @@ val%template error
   ?here:Source_code_position0.t -> ?strict:unit -> string -> 'a -> ('a -> Sexp.t) -> 'b t
 [@@mode (p, c) = ((nonportable, uncontended), (portable, contended))]
 
-val error_s : 'a. Sexp.t -> 'a t
+[%%template:
+[@@@kind.default k = base_or_null]
+
+val error_s : 'a. Sexp.t -> ('a t[@kind k])
 
 (** [error_string message] is [Error (Error.of_string message)]. *)
-val error_string : 'a. string -> 'a t
+val error_string : 'a. string -> ('a t[@kind k])
 
 (** [errorf format arg1 arg2 ...] is [Error (sprintf format arg1 arg2 ...)]. Note that it
     calculates the string eagerly, so when performance matters you may want to use [error]
     instead. *)
-val errorf : 'a 'b. ('a, unit, string, 'b t) format4 -> 'a
+val errorf : 'a 'b. ('a, unit, string, ('b t[@kind k])) format4 -> 'a]
 
 (** [errorf_portable format arg1 arg2 ... ()] is like [errorf format arg1 arg2 ...] but
     constructing a portable error. *)
@@ -116,6 +120,9 @@ val%template tag : 'a. 'a t -> tag:string -> 'a t
 val%template tag_s : 'a. 'a t -> tag:Sexp.t -> 'a t
 [@@mode p = (portable, nonportable)]
 
+(** [tag_lazy] is like [tag] with a lazy tag. *)
+val tag_lazy : 'a. 'a t -> tag:string Lazy.t -> 'a t
+
 (** [tag_s_lazy] is like [tag] with a lazy sexp tag. *)
 val tag_s_lazy : 'a. 'a t -> tag:Sexp.t Lazy.t -> 'a t
 
@@ -128,8 +135,16 @@ val tag_arg : 'a 'b. 'a t -> string -> 'b -> ('b -> Sexp.t) -> 'a t
     the function that is unimplemented. *)
 val unimplemented : 'a. string -> 'a t
 
-val%template map : 'a 'b. ('a t[@kind ki]) -> f:('a -> 'b) -> ('b t[@kind ko])
-[@@kind ki = base_or_null, ko = base_or_null]
+[%%template:
+[@@@mode.default m = (global, local)]
+[@@@kind ko = base_or_null]
+
+val return : 'a. 'a -> ('a t[@kind ko]) [@@kind ko] [@@zero_alloc_if_local m]
+
+[@@@kind.default ki = base_or_null, ko = ko]
+
+val bind : 'a 'b. ('a t[@kind ki]) -> f:('a -> ('b t[@kind ko])) -> ('b t[@kind ko])
+val map : 'a 'b. ('a t[@kind ki]) -> f:('a -> 'b) -> ('b t[@kind ko])]
 
 val iter : 'a. 'a t -> f:('a -> unit) -> unit
 val iter_error : 'a. 'a t -> f:(Error.t -> unit) -> unit

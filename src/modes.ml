@@ -18,23 +18,23 @@ type%template 'a t = { modal : 'a }
 [@@modality
   g = (local, global)
   , p = (nonportable, portable)
-  , c = (uncontended, shared, contended)
+  , c = (uncontended, shared, contended, read, immutable)
   , m = (once, many)]
-[@@kind k = base_or_null]
+[@@kind k = (base_or_null, (value_or_null & bits64) & word)]
 
 module Global = struct
   include Modes_intf.Definitions.Global
 
   type 'a t = { global : 'a } [@@unboxed]
 
-  let compare__local compare a b = compare a.global b.global
-  let compare compare a b = compare__local compare a b
-  let equal__local equal a b = equal a.global b.global
-  let equal equal a b = equal__local equal a b
+  let%template[@mode local] compare compare a b = compare a.global b.global
+  let%template compare compare a b = (compare [@mode local]) compare a b
+  let%template[@mode local] equal equal a b = equal a.global b.global
+  let%template equal equal a b = (equal [@mode local]) equal a b
   let hash_fold_t hash state t = hash state t.global
   let t_of_sexp of_sexp sexp = { global = of_sexp sexp }
   let sexp_of_t sexp_of t = sexp_of t.global
-  let sexp_of_t__stack sexp_of t = sexp_of t.global
+  let%template[@alloc stack] sexp_of_t sexp_of t = sexp_of t.global
 
   let t_sexp_grammar : 'a. 'a Sexplib0.Sexp_grammar.t -> 'a t Sexplib0.Sexp_grammar.t =
     Sexplib0.Sexp_grammar.coerce
@@ -251,10 +251,11 @@ module Portable = struct
     -> (('a, 'b) Either0.t[@local_opt])
     = "%identity"
 
-  external unwrap_first__portable
+  external%template unwrap_first
     :  (('a t, 'b) Either0.t[@local_opt])
     -> (('a, 'b) Either0.t[@local_opt])
     = "%identity"
+  [@@mode portable]
 
   external wrap_second
     :  (('a, 'b) Either0.t[@local_opt])
@@ -266,10 +267,11 @@ module Portable = struct
     -> (('a, 'b) Either0.t[@local_opt])
     = "%identity"
 
-  external unwrap_second__portable
+  external%template unwrap_second
     :  (('a, 'b t) Either0.t[@local_opt])
     -> (('a, 'b) Either0.t[@local_opt])
     = "%identity"
+  [@@mode portable]
 
   external wrap_result
     :  (('a, 'b) Result.t[@local_opt])
@@ -301,10 +303,11 @@ module Portable = struct
     -> (('a, 'b) Result.t[@local_opt])
     = "%identity"
 
-  external unwrap_ok__portable
+  external%template unwrap_ok
     :  (('a t, 'b) Result.t[@local_opt])
     -> (('a, 'b) Result.t[@local_opt])
     = "%identity"
+  [@@mode portable]
 
   external wrap_error
     :  (('a, 'b) Result.t[@local_opt])
@@ -316,10 +319,11 @@ module Portable = struct
     -> (('a, 'b) Result.t[@local_opt])
     = "%identity"
 
-  external unwrap_error__portable
+  external%template unwrap_error
     :  (('a, 'b t) Result.t[@local_opt])
     -> (('a, 'b) Result.t[@local_opt])
     = "%identity"
+  [@@mode portable]
 
   external wrap_tuple2 : ('a * 'b[@local_opt]) -> ('a t * 'b t[@local_opt]) = "%identity"
   external wrap_fst : ('a * 'b[@local_opt]) -> ('a t * 'b[@local_opt]) = "%identity"
@@ -417,14 +421,16 @@ module At_locality = struct
   type actually_local
 
   type global = [ `global ]
-  [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+  [@@deriving
+    compare ~localize, equal ~localize, hash, sexp_of ~localize ~stackify, sexp_grammar]
   [@@immediate]
 
   type local =
     [ `global
     | `local of (actually_local[@compare.ignore] [@equal.ignore] [@sexp.opaque])
     ]
-  [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+  [@@deriving
+    compare ~localize, equal ~localize, hash, sexp_of ~localize ~stackify, sexp_grammar]
 
   type (+'a, +'locality) t
 
@@ -440,9 +446,12 @@ module At_locality = struct
   let globalize_global t = wrap (unwrap_global t)
   let equal equal_a _ x y = equal_a (unwrap x) (unwrap y)
   let compare compare_a _ x y = compare_a (unwrap x) (unwrap y)
-  let equal__local equal_a _ x y = equal_a (unwrap_local x) (unwrap_local y) [@nontail]
 
-  let compare__local compare_a _ x y =
+  let%template[@mode local] equal equal_a _ x y =
+    equal_a (unwrap_local x) (unwrap_local y) [@nontail]
+  ;;
+
+  let%template[@mode local] compare compare_a _ x y =
     compare_a (unwrap_local x) (unwrap_local y) [@nontail]
   ;;
 
@@ -463,9 +472,11 @@ module At_portability = struct
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
 
   (* We only need [hash_fold] and local comparisons. *)
-  let _ = [%compare: nonportable_]
-  let _ = [%equal: nonportable_]
-  let _ = [%hash: nonportable_]
+
+  [%%template
+  let _ = [%compare: nonportable_] [@mode.explicit global]
+  let _ = [%equal: nonportable_] [@mode.explicit global]
+  let _ = [%hash: nonportable_]]
 
   type portable = [ `portable ]
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]

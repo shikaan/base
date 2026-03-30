@@ -45,9 +45,7 @@ include (
 type 'a ref = 'a Stdlib.ref = { mutable contents : 'a }
 type 'a iarray = 'a Basement.Stdlib_iarray_labels.t
 
-type 'a or_null = 'a Basement.Or_null_shim.t =
-  | Null
-  | This of 'a
+include Basement.Or_null_shim.Export
 
 module Stdlib = struct
   include Stdlib
@@ -199,10 +197,11 @@ let raise : 'a. exn -> 'a =
   fun exn ->
   match (raise exn : Nothing0.t) with
   | _ -> .
-[@@kind k = (base_non_value, value & (base, kr1, kr2, kr3), bits32 & bits32)]
+[@@kind
+  k = (base_non_value, value_or_null & (base_or_null, kr1, kr2, kr3), bits32 & bits32)]
 ;;]
 
-external phys_equal : ('a[@local_opt]) -> ('a[@local_opt]) -> bool = "%eq"
+external phys_equal : 'a. ('a[@local_opt]) -> ('a[@local_opt]) -> bool = "%eq"
 external decr : (int ref[@local_opt]) -> unit = "%decr"
 external incr : (int ref[@local_opt]) -> unit = "%incr"
 

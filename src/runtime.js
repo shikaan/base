@@ -65,6 +65,13 @@ function Base_unsafe_create_local_bytes(v_len) {
   return caml_create_bytes(v_len);
 }
 
+//Provides: caml_array_make_local
+//Requires: caml_array_make
+function caml_array_make_local(v_len, v_elt) {
+  // In javascript there's no local allocation.
+  return caml_array_make(v_len, v_elt);
+}
+
 //Provides: caml_make_local_vect
 //Requires: caml_make_vect
 function caml_make_local_vect(v_len, v_elt) {
@@ -135,4 +142,10 @@ function Base_string_concat_array(v_string_array, v_sep) {
 // Requires: caml_obj_block
 function Base_obj_new_mixed_block(tag, wosize, scannable) {
   return caml_obj_block(tag, wosize);
+}
+
+// Provides: Base_iarray_to_array_of_immediates
+// Requires: caml_array_sub
+function Base_iarray_to_array_of_immediates(src, len) {
+  return caml_array_sub(src, 0, len);
 }

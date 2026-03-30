@@ -3,7 +3,7 @@
 open! Import
 
 [%%template
-[@@@kind_set.define values = (value, value mod external64)]
+[@@@kind_set.define values = (value, value mod external64, value_or_null)]
 
 module Definitions = struct
   [@@@mode.default v = (read_write, read, immutable)]
@@ -60,35 +60,54 @@ module Definitions = struct
     type ('elt, 'p1, 'p2) src
     type ('elt, 'p1, 'p2) dst
 
-    val blit : ((('a, _, _) src, ('a, _, _) dst) blit[@mode v])
-    val blito : ((('a, _, _) src, ('a, _, _) dst) blito[@mode v])
-    val unsafe_blit : ((('a, _, _) src, ('a, _, _) dst) blit[@mode v])
-    val sub : ((('a, _, _) src, ('a, _, _) dst) sub[@mode v])
-    val subo : ((('a, _, _) src, ('a, _, _) dst) subo[@mode v])
+    val blit
+      : 'a 'p1 'p2 'p3 'p4.
+      ((('a, 'p1, 'p2) src, ('a, 'p3, 'p4) dst) blit[@mode v])
+
+    val blito
+      : 'a 'p1 'p2 'p3 'p4.
+      ((('a, 'p1, 'p2) src, ('a, 'p3, 'p4) dst) blito[@mode v])
+
+    val unsafe_blit
+      : 'a 'p1 'p2 'p3 'p4.
+      ((('a, 'p1, 'p2) src, ('a, 'p3, 'p4) dst) blit[@mode v])
+
+    val sub : 'a 'p1 'p2 'p3 'p4. ((('a, 'p1, 'p2) src, ('a, 'p3, 'p4) dst) sub[@mode v])
+
+    val subo
+      : 'a 'p1 'p2 'p3 'p4.
+      ((('a, 'p1, 'p2) src, ('a, 'p3, 'p4) dst) subo[@mode v])
   end
-  [@@kind k = values]
+  [@@kind.explicit k = values]
+
+  module type S1_phantom2_distinct = S1_phantom2_distinct [@kind.explicit value] [@mode v]
+  [@@kind value]
 
   module type S = sig
     type t
 
     include
       S1_phantom2_distinct
-      [@kind k] [@mode v]
+      [@kind.explicit k] [@mode v]
       with type (_, _, _) src := t
        and type (_, _, _) dst := t
   end
-  [@@kind k = values]
+  [@@kind.explicit k = values]
+
+  module type S = S [@kind.explicit value] [@mode v] [@@kind value]
 
   module type S1 = sig
     type 'a t
 
     include
       S1_phantom2_distinct
-      [@kind k] [@mode v]
+      [@kind.explicit k] [@mode v]
       with type ('a, _, _) src := 'a t
        and type ('a, _, _) dst := 'a t
   end
-  [@@kind k = values]
+  [@@kind.explicit k = values]
+
+  module type S1 = S1 [@kind.explicit value] [@mode v] [@@kind value]
 
   module type S_distinct = sig
     type src
@@ -152,12 +171,14 @@ module Definitions = struct
 
     (** [Make1*] guarantees to only call [create_like ~len t] with [len > 0] if
         [length t > 0]. *)
-    val create_like : len:int -> 'a t -> 'a t
+    val create_like : 'a. len:int -> 'a t -> 'a t
 
-    val length : _ t -> int
-    val unsafe_blit : (('a t, 'a t) blit[@mode v])
+    val length : 'a. 'a t -> int
+    val unsafe_blit : 'a. (('a t, 'a t) blit[@mode v])
   end
-  [@@kind k = values]
+  [@@kind.explicit k = values]
+
+  module type Sequence1 = Sequence1 [@kind.explicit value] [@mode v] [@@kind value]
 end
 
 module type Blit = sig
@@ -211,9 +232,12 @@ module type Blit = sig
     S_to_string [@mode v] with type t := T.t
 
   (** [Make1] is for blitting between two values of the same polymorphic type. *)
-  module%template.portable Make1 (Sequence : Sequence1 [@kind k] [@mode v]) :
-    S1 [@kind k] [@mode v] with type 'a t := 'a Sequence.t
-  [@@kind k = values]
+  module%template.portable Make1 (Sequence : Sequence1 [@kind.explicit k] [@mode v]) :
+    S1 [@kind.explicit k] [@mode v] with type 'a t := 'a Sequence.t
+  [@@kind.explicit k = values]
+
+  module Make1 : module type of Make1 [@kind.explicit value] [@mode v] [@modality p]
+  [@@kind value] [@@modality p = (nonportable, portable)]
 
   module%template.portable Make1_phantom2_distinct
       (Src : sig

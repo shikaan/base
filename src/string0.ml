@@ -83,7 +83,13 @@ let%template[@alloc a = (heap, stack)] make n c =
   [@exclave_if_stack a]
 ;;
 
-let%template[@alloc heap] sub = Stdlib.String.sub
+let%template[@alloc a @ m = (stack_local, heap_global)] sub t ~pos ~len =
+  (let t = Bytes.unsafe_of_string_promise_no_mutation t in
+   let t = (Bytes.sub [@alloc a]) t ~pos ~len in
+   Bytes.unsafe_to_string ~no_mutation_while_string_reachable:t)
+  [@exclave_if_stack a]
+;;
+
 let uncapitalize = Stdlib.String.uncapitalize_ascii
 
 open struct
@@ -501,10 +507,10 @@ let lowercase string =
   Bytes.unsafe_to_string ~no_mutation_while_string_reachable:string
 ;;
 
-let lowercase__stack string =
+let%template[@alloc stack] lowercase string =
   let string =
     Bytes.unsafe_of_string_promise_no_mutation string
-    |> Bytes.map__stack ~f:Char0.lowercase
+    |> (Bytes.map [@alloc stack]) ~f:Char0.lowercase
   in
   Bytes.unsafe_to_string ~no_mutation_while_string_reachable:string
 ;;
@@ -516,10 +522,10 @@ let uppercase string =
   Bytes.unsafe_to_string ~no_mutation_while_string_reachable:string
 ;;
 
-let uppercase__stack string =
+let%template[@alloc stack] uppercase string =
   let string =
     Bytes.unsafe_of_string_promise_no_mutation string
-    |> Bytes.map__stack ~f:Char0.uppercase
+    |> (Bytes.map [@alloc stack]) ~f:Char0.uppercase
   in
   Bytes.unsafe_to_string ~no_mutation_while_string_reachable:string
 ;;
@@ -530,33 +536,44 @@ let%template[@mode l = (global, local)] iter t ~f =
   done
 ;;
 
-let split_lines =
-  let back_up_at_newline ~t ~pos ~eol =
-    pos := !pos - if !pos > 0 && Char0.equal t.[!pos - 1] '\r' then 2 else 1;
-    eol := !pos + 1
+let%template split_lines =
+  let back_up_pos_and_eol_at_newline ~t ~pos =
+    let pos = pos - Bool0.select (pos > 0 && Char0.equal t.[pos - 1] '\r') 2 1 in
+    let eol = pos + 1 in
+    pos, eol
   in
   fun t ->
-    let n = length t in
-    if n = 0
-    then []
-    else (
-      (* Invariant: [-1 <= pos < eol]. *)
-      let pos = ref (n - 1) in
-      let eol = ref n in
-      let ac = ref [] in
-      (* We treat the end of the string specially, because if the string ends with a
-         newline, we don't want an extra empty string at the end of the output. *)
-      if Char0.equal t.[!pos] '\n' then back_up_at_newline ~t ~pos ~eol;
-      while !pos >= 0 do
-        if not (Char0.equal t.[!pos] '\n')
-        then decr pos
-        else (
-          (* Because [pos < eol], we know that [start <= eol]. *)
-          let start = !pos + 1 in
-          ac := sub t ~pos:start ~len:(!eol - start) :: !ac;
-          back_up_at_newline ~t ~pos ~eol)
-      done;
-      sub t ~pos:0 ~len:!eol :: !ac)
+    (let n = length t in
+     if n = 0
+     then []
+     else (
+       (* Invariant: [-1 <= pos < eol]. *)
+       let pos = n - 1 in
+       let eol = n in
+       (* We treat the end of the string specially, because if the string ends with a
+          newline, we don't want an extra empty string at the end of the output. *)
+       let pos, eol =
+         if Char0.equal t.[pos] '\n'
+         then back_up_pos_and_eol_at_newline ~t ~pos
+         else pos, eol
+       in
+       let rec loop ~pos ~eol ac =
+         (if pos >= 0
+          then
+            if not (Char0.equal t.[pos] '\n')
+            then loop ~pos:(pos - 1) ~eol ac
+            else (
+              (* Because [pos < eol], we know that [start <= eol]. *)
+              let start = pos + 1 in
+              let ac = (sub [@alloc a]) t ~pos:start ~len:(eol - start) :: ac in
+              let pos, eol = back_up_pos_and_eol_at_newline ~t ~pos in
+              loop ~pos ~eol ac)
+          else (sub [@alloc a]) t ~pos:0 ~len:eol :: ac)
+         [@exclave_if_stack a]
+       in
+       loop ~pos ~eol []))
+    [@exclave_if_stack a]
+[@@alloc a @ m = (stack_local, heap_global)]
 ;;
 
 let%template[@alloc a @ lo = (heap @ global, stack @ local)] init n ~f =

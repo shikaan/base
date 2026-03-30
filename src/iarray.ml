@@ -360,6 +360,13 @@ module%template Local0 = struct
   ;;
 
   let fold_map t ~init ~f = fold_mapi t ~init ~f:(fun _ acc x -> f acc x) [@nontail]
+  let to_array_of_immediates = I.to_array
+
+  let sort_immediates t ~compare =
+    let dst = to_array_of_immediates t in
+    Array.sort dst ~compare;
+    unsafe_of_array__promise_no_mutation dst
+  ;;
 
   module Let_syntax = struct
     let return = singleton
@@ -846,13 +853,72 @@ let%template mapi t ~f = I.mapi_local_input t ~f [@@mode local] [@@alloc heap]
 let%template mapi t ~f = I.mapi_local t ~f [@@mode local] [@@alloc stack]
 let%template mapi t ~f = I.mapi_local_output t ~f [@@mode global] [@@alloc stack]
 
-let%template map t ~f = init (length t) ~f:(fun i -> f (unsafe_get t i)) [@nontail]
-[@@mode global] [@@alloc heap]
+include struct
+  (* These functions are copied from stdlib_iarray_labels.ml in basement because we cannot
+     use ppx_template in that library. *)
+  open struct
+    (* VERY UNSAFE: Any of these functions can be used to violate the "no forward
+       pointers" restriction for the local stack if not used carefully. Each of these can
+       either make a local mutable array or mutate its contents, and if not careful, this
+       can lead to an array's contents pointing forwards. *)
+
+    [%%template external create_local : len:int -> 'a -> 'a array = "caml_make_vect"]
+
+    external unsafe_of_local_array : 'a. 'a array -> 'a iarray = "%identity"
+    [@@layout_poly]
+
+    external unsafe_set_local : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
+    [@@layout_poly]
+  end
+
+  let%template[@inline always] unsafe_init (type a) l (f : int -> a) =
+    if l = 0
+    then unsafe_of_local_array [||]
+    else (
+      (* The design of this function is exceedingly delicate, and is the only way we can
+         correctly allocate a local array on the stack via mutation. We are subject to the
+         "no forward pointers" constraint on the local stack; we're not allowed to make
+         pointers to later-allocated objects even within the same stack frame. Thus, in
+         order to get this right, we consume O(n) call-stack space: we allocate the values
+         to put in the array, and only *then* recurse, creating the array as the very last
+         thing of all and *returning* it. This is why the [f i] call is the first thing in
+         the function, and why it's not tail-recursive; if it were tail-recursive, then we
+         wouldn't have anywhere to put the array elements during the whole process. *)
+      let rec go i =
+        let x = f i in
+        if i = l - 1
+        then create_local ~len:l x
+        else (
+          let res = go (i + 1) in
+          unsafe_set_local res i x;
+          res)
+      in
+      unsafe_of_local_array (go 0))
+  [@@kind k = (value_or_null, float64)] [@@alloc stack]
+  ;;
+end
+
+let%template map (type a b) (t : a t) ~(f : a -> b) =
+  (unsafe_init [@kind ko] [@alloc stack]) (length t) (fun i -> f (unsafe_get t i))
+[@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+[@@mode mi = (global, local)]
+[@@alloc stack]
 ;;
 
-let%template map t ~f = I.map_local_input t ~f [@@mode local] [@@alloc heap]
-let%template map t ~f = I.map_local t ~f [@@mode local] [@@alloc stack]
-let%template map t ~f = I.map_local_output t ~f [@@mode global] [@@alloc stack]
+let%template map (type a b) (t : a t) ~f : b t =
+  let l = length t in
+  if l = 0
+  then I.unsafe_of_array [||]
+  else (
+    let r = Array.create ~len:l (f (unsafe_get t 0)) in
+    for i = 1 to l - 1 do
+      Array.unsafe_set r i (f (unsafe_get t i))
+    done;
+    I.unsafe_of_array r)
+[@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+[@@mode m = (global, local)]
+[@@alloc heap]
+;;
 
 let%template[@alloc heap] filteri t ~f =
   let len = length t in

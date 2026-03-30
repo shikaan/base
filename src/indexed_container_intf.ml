@@ -1,7 +1,7 @@
 open! Import
 
 [%%template
-[@@@kind_set.define base_with_ext = (base, value mod external64)]
+[@@@kind_set.define base_or_null_with_ext = (base_or_null, value_or_null mod external64)]
 
 module Definitions = struct
   type ('t, 'a, 'accum) fold = 't -> init:'accum -> f:('accum -> 'a -> 'accum) -> 'accum
@@ -58,17 +58,26 @@ module Definitions = struct
   [@@@mode.default m = (global, local)]
 
   module type
-    [@kind_set.explicit ks = (value, value_or_null, value mod external64, base_with_ext)] Iterators_with_index_without_findi = sig
+    [@kind_set.explicit
+      (ks, ks_not_in_t)
+      = ( (value, value)
+        , (value_or_null, value_or_null)
+        , (value mod external64, value)
+        , (base_or_null_with_ext, base_or_null) )] Iterators_with_index_without_findi = sig
     include Container.Generic_types [@kind_set.explicit ks]
+
+    type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind.explicit k1 = ks]
+    type 'a elt := ('a elt[@kind k1]) [@@kind.explicit k1 = ks]
 
     (** These are all like their equivalents in [Container] except that an index starting
         at 0 is added as the first argument to [f]. *)
 
     [%%template:
-    [@@@kind.default_if_multiple k1 = ks]
+    [@@@kind.default_if_multiple k1' = ks]
+    [@@@kind k1 = k1' mod separable]
 
-    type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind value]
-    type 'a elt := ('a elt[@kind k1]) [@@kind value]
+    type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind.explicit k1']) [@@kind value]
+    type 'a elt := ('a elt[@kind.explicit k1']) [@@kind value]
 
     [@@@mode.default mi = (global, m)]
 
@@ -77,7 +86,7 @@ module Definitions = struct
     val for_alli : 'a 'p1 'p2. ('a, 'p1, 'p2) t -> f:(int -> 'a elt -> bool) -> bool
     val counti : 'a 'p1 'p2. ('a, 'p1, 'p2) t -> f:(int -> 'a elt -> bool) -> int
 
-    [@@@kind.default_if_multiple k2 = (ks or value)]
+    [@@@kind.default_if_multiple k2 = ks_not_in_t]
     [@@@mode.default mo = (global, m)]
 
     val foldi : 'a 'p1 'p2 'acc. ((('a, 'p1, 'p2) t, 'a elt, 'acc) foldi[@mode mi mo])
@@ -85,21 +94,21 @@ module Definitions = struct
     val iteri_until
       : 'a 'p1 'p2 'final.
       ((('a, 'p1, 'p2) t, 'a elt, 'final) iteri_until
-      [@mode mi mo] [@kind (k1 or value_or_null) (k2 or value_or_null)])
+      [@mode mi mo] [@kind (k1' or value_or_null) (k2 or value_or_null)])
 
     val find_mapi
       : 'a 'p1 'p2 'b.
       ('a, 'p1, 'p2) t
-      -> f:(int -> 'a elt -> ('b Option0.t[@kind k2]))
-      -> ('b Option0.t[@kind k2])
+      -> f:(int -> 'a elt -> ('b Option0.t[@kind k2 or value_or_null]))
+      -> ('b Option0.t[@kind k2 or value_or_null])
 
-    [@@@kind.default_if_multiple k3 = (ks or value)]
+    [@@@kind.default_if_multiple k3 = ks_not_in_t]
 
     val foldi_until
       : 'a 'p1 'p2 'acc 'final.
       ((('a, 'p1, 'p2) t, 'a elt, 'acc, 'final) foldi_until
       [@mode mi mo]
-      [@kind (k1 or value_or_null) (k2 or value_or_null) (k3 or value_or_null)])]
+      [@kind (k1' or value_or_null) (k2 or value_or_null) (k3 or value_or_null)])]
   end
 
   module type
@@ -108,270 +117,319 @@ module Definitions = struct
 
     include Iterators_with_index_without_findi [@kind_set.explicit ks] [@mode m]
 
-    [@@@kind.default_if_multiple k = ks]
+    [@@@kind.default_if_multiple k' = ks]
+    [@@@kind k = k' mod separable]
 
     val findi
       : 'a 'p1 'p2.
-      (('a, 'p1, 'p2) t[@kind k])
-      -> f:(int -> ('a elt[@kind k]) -> bool)
-      -> (int * ('a elt[@kind k])) option
+      (('a, 'p1, 'p2) t[@kind k'])
+      -> f:(int -> ('a elt[@kind k']) -> bool)
+      -> (int * ('a elt[@kind k'])) option
     [@@mode m = (global, m)]
   end
 
   module type Iterators_with_index = Iterators_with_index [@kind_set.explicit ks]
   [@@kind_set ks = value]
 
-  module type [@kind_set.explicit ks = base_with_ext] Iterators_with_index = sig
+  module type [@kind_set.explicit ks = base_or_null_with_ext] Iterators_with_index = sig
     include Iterators_with_index_without_findi [@kind_set.explicit ks] [@mode m]
 
-    [@@@kind.default_if_multiple k = ks]
+    [@@@kind.default_if_multiple k' = ks]
+    [@@@kind k = k' mod separable]
 
     val findi
       : 'a 'p1 'p2.
-      (('a, 'p1, 'p2) t[@kind k])
-      -> f:(int -> ('a elt[@kind k]) -> bool)
-      -> ((int * ('a elt[@kind k])) Option0.t[@kind value & (k or value)])
+      (('a, 'p1, 'p2) t[@kind k'])
+      -> f:(int -> ('a elt[@kind k']) -> bool)
+      -> ((int * ('a elt[@kind k'])) Option0.t
+         [@kind value_or_null & (k' or value_or_null)])
     [@@mode m = (global, m)]
+  end]
+
+  [%%template
+  [@@@alloc a @ m = (heap_global, stack_local)]
+
+  include struct
+    [@@@alloc.default a]
+
+    module type
+      [@kind_set.explicit
+        ks = (value, value_or_null, value mod external64, base_or_null_with_ext)] Generic = sig
+      include Container.Generic [@kind_set.explicit ks] [@alloc a]
+
+      include
+        Iterators_with_index
+      [@kind_set.explicit ks]
+      [@mode m]
+      [@with:
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
+
+        type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
+        type 'a elt := ('a elt[@kind k'])]
+    end
+
+    module type Generic = sig
+      include Generic [@kind_set.explicit ks] [@alloc a]
+
+      include
+        Container.Generic
+        [@alloc a]
+        with type ('a, 'b, 'c) t := ('a, 'b, 'c) t
+         and type 'a elt := 'a elt
+    end
+    [@@kind_set ks = value]
+
+    (** Like [Generic], but [mem] does not accept an [equal] function, since [Make0]
+        already takes [Elt.equal]. *)
+
+    include struct
+      [@@@alloc.default a]
+
+      module type
+        [@kind_set.explicit ks = (value, value mod external64, base_or_null_with_ext)] S0 = sig
+        include Container.S0 [@kind_set.explicit ks] [@alloc a]
+
+        include
+          Iterators_with_index
+        [@kind_set.explicit ks]
+        [@mode m]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a, _, _) t := (t[@kind k'])
+          type _ elt := (elt[@kind k'])]
+      end
+
+      module type S0 = S0 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
+    end
+
+    [@@@kind_set ks = (value, value_or_null, value mod external64, base_or_null_with_ext)]
+
+    include struct
+      [@@@alloc.default a]
+      [@@@kind_set.default.explicit ks]
+
+      module type S1 = sig
+        include Container.S1 [@kind_set.explicit ks] [@alloc a]
+
+        include
+          Iterators_with_index
+        [@kind_set.explicit ks]
+        [@mode m]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a, _, _) t := ('a t[@kind k'])
+          type 'a elt := 'a]
+      end
+
+      module type%template S1 = S1 [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
+
+      module type Creators_with_index = sig
+        include Container.Generic_types [@kind_set.explicit ks]
+
+        type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind.explicit k1 = ks]
+        type 'a elt := ('a elt[@kind k1]) [@@kind.explicit k1 = ks]
+
+        [%%template:
+        [@@@kind.default_if_multiple k1' = ks]
+        [@@@kind k1 = k1' mod separable]
+
+        type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind.explicit k1']) [@@kind value]
+        type 'a elt := ('a elt[@kind.explicit k1']) [@@kind value]
+
+        (** [init n ~f] is equivalent to [of_list [f 0; f 1; ...; f (n-1)]]. It raises an
+            exception if [n < 0]. *)
+        val init : 'a 'p1 'p2. int -> f:(int -> 'a elt) -> ('a, 'p1, 'p2) t
+        [@@alloc __ @ m = (heap_global, a @ m)]
+
+        val filteri
+          : 'a 'p1 'p2.
+          ('a, 'p1, 'p2) t -> f:(int -> 'a elt -> bool) -> ('a, 'p1, 'p2) t
+        [@@alloc __ @ m = (heap_global, a @ m)]
+
+        (** [partitioni_tf t ~f] is like partition_tf. Additionally, it passes the index
+            as an argument. *)
+        val partitioni_tf
+          : 'a 'p1 'p2.
+          ('a, 'p1, 'p2) t
+          -> f:(int -> 'a elt -> bool)
+          -> ('a, 'p1, 'p2) t * ('a, 'p1, 'p2) t
+        [@@alloc __ @ m = (heap_global, a @ m)]]
+
+        [@@@kind.default_if_multiple k1' = ks]
+        [@@@kind.default_if_multiple k2' = ks]
+        [@@@kind k1 = k1' mod separable, k2 = k2' mod separable]
+
+        (** [mapi] is like map. Additionally, it passes in the index of each element as
+            the first argument to the mapped function. *)
+        val mapi
+          : 'a 'p1 'p2 'b.
+          (('a, 'p1, 'p2) t[@kind.explicit k1'])
+          -> f:(int -> ('a elt[@kind.explicit k1']) -> ('b elt[@kind.explicit k2']))
+          -> (('b, 'p1, 'p2) t[@kind.explicit k2'])
+        [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
+
+        (** filter_mapi is like [filter_map]. Additionally, it passes in the index of each
+            element as the first argument to the mapped function. *)
+        val filter_mapi
+          : 'a 'p1 'p2 'b.
+          (('a, 'p1, 'p2) t[@kind.explicit k1'])
+          -> f:
+               (int
+                -> ('a elt[@kind.explicit k1'])
+                -> (('b elt[@kind.explicit k2']) Option0.t
+                   [@kind.explicit k2' or value_or_null]))
+          -> (('b, 'p1, 'p2) t[@kind.explicit k2'])
+        [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
+
+        (** [concat_mapi t ~f] is like concat_map. Additionally, it passes the index as an
+            argument. *)
+        val concat_mapi
+          : 'a 'p1 'p2 'b.
+          (('a, 'p1, 'p2) t[@kind.explicit k1'])
+          -> f:
+               (int
+                -> ('a elt[@kind.explicit k1'])
+                -> (('b, 'p1, 'p2) t[@kind.explicit k2']))
+          -> (('b, 'p1, 'p2) t[@kind.explicit k2'])
+        [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
+
+        [@@@kind.default_if_multiple k3' = ks]
+        [@@@kind k3 = k3' mod separable]
+
+        (** [partition_mapi t ~f] is like partition_map. Additionally, it passes the index
+            as an argument. *)
+        val partition_mapi
+          : 'a 'p1 'p2 'b 'c.
+          (('a, 'p1, 'p2) t[@kind.explicit k1'])
+          -> f:
+               (int
+                -> ('a elt[@kind.explicit k1'])
+                -> ((('b elt[@kind.explicit k2']), ('c elt[@kind.explicit k3'])) Either0.t
+                   [@kind (k2' or value_or_null) (k3' or value_or_null)]))
+          -> (('b, 'p1, 'p2) t[@kind.explicit k2'])
+             * (('c, 'p1, 'p2) t[@kind.explicit k3'])
+        [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
+      end
+
+      module type%template Creators_with_index = Creators_with_index
+      [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
+
+      module type Generic_with_creators = sig
+        include Generic [@kind_set.explicit ks] [@alloc a]
+
+        include
+          Container.Creators
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
+          type 'a elt := ('a elt[@kind k'])]
+
+        include
+          Creators_with_index
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
+          type 'a elt := ('a elt[@kind k'])]
+      end
+
+      module type%template Generic_with_creators = sig
+        include Generic_with_creators [@kind_set.explicit ks] [@alloc a]
+
+        include
+          Container.Generic_with_creators
+          [@alloc a]
+          with type ('a, 'b, 'c) t := ('a, 'b, 'c) t
+           and type 'a elt := 'a elt
+      end
+      [@@kind_set ks = value] [@@alloc a]
+    end
   end]
 
   [%%template
   [@@@alloc.default a @ m = (heap_global, stack_local)]
 
-  module type
-    [@kind_set.explicit ks = (value, value_or_null, value mod external64, base_with_ext)] Generic = sig
-    include Container.Generic [@kind_set.explicit ks] [@alloc a]
+  include struct
+    [@@@alloc.default a]
 
-    include
-      Iterators_with_index
-    [@kind_set.explicit ks]
-    [@mode m]
-    [@with:
-      [@@@kind.default k = ks]
+    (** Like [Generic_with_creators], but [mem] does not accept an [equal] function, since
+        [Make0_with_creators] already takes [Elt.equal]. *)
 
-      type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k])
-      type 'a elt := ('a elt[@kind k])]
-  end
+    module type
+      [@kind_set.explicit ks = (value, base_or_null_with_ext)] S0_with_creators = sig
+      include S0 [@kind_set.explicit ks] [@alloc a]
 
-  module type Generic = sig
-    include Generic [@kind_set.explicit ks] [@alloc a]
-
-    include
-      Container.Generic
+      include
+        Container.S0_with_creators
+      [@kind_set.explicit ks]
       [@alloc a]
-      with type ('a, 'b, 'c) t := ('a, 'b, 'c) t
-       and type 'a elt := 'a elt
-  end
-  [@@kind_set ks = value]
+      [@with:
+        [@@@kind.default k = ks]
 
-  (** Like [Generic], but [mem] does not accept an [equal] function, since [Make0] already
-      takes [Elt.equal]. *)
+        type t := (t[@kind k])
+        type elt := (elt[@kind k])]
 
-  module type
-    [@kind_set.explicit ks = (value, value mod external64, base_with_ext)] S0 = sig
-    include Container.S0 [@kind_set.explicit ks] [@alloc a]
-
-    include
-      Iterators_with_index
-    [@kind_set.explicit ks]
-    [@mode m]
-    [@with:
-      [@@@kind.default k = ks]
-
-      type ('a, _, _) t := (t[@kind k])
-      type _ elt := (elt[@kind k])]
-  end
-
-  module type S0 = S0 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
-
-  [@@@kind_set.default.explicit
-    ks = (value, value_or_null, value mod external64, base_with_ext)]
-
-  module type S1 = sig
-    include Container.S1 [@kind_set.explicit ks] [@alloc a]
-
-    include
-      Iterators_with_index
-    [@kind_set.explicit ks]
-    [@mode m]
-    [@with:
-      [@@@kind.default k = ks]
-
-      type ('a, _, _) t := ('a t[@kind k])
-      type 'a elt := 'a]
-  end
-
-  module type S1 = S1 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
-
-  module type Creators_with_index = sig
-    include Container.Generic_types [@kind_set.explicit ks]
-
-    [%%template:
-    [@@@kind.default_if_multiple k1 = ks]
-
-    type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind value]
-    type 'a elt := ('a elt[@kind k1]) [@@kind value]
-
-    (** [init n ~f] is equivalent to [of_list [f 0; f 1; ...; f (n-1)]]. It raises an
-        exception if [n < 0]. *)
-    val init : 'a 'p1 'p2. int -> f:(int -> 'a elt) -> ('a, 'p1, 'p2) t
-    [@@alloc __ @ m = (heap_global, a @ m)]
-
-    val filteri
-      : 'a 'p1 'p2.
-      ('a, 'p1, 'p2) t -> f:(int -> 'a elt -> bool) -> ('a, 'p1, 'p2) t
-    [@@alloc __ @ m = (heap_global, a @ m)]
-
-    (** [partitioni_tf t ~f] is like partition_tf. Additionally, it passes the index as an
-        argument. *)
-    val partitioni_tf
-      : 'a 'p1 'p2.
-      ('a, 'p1, 'p2) t -> f:(int -> 'a elt -> bool) -> ('a, 'p1, 'p2) t * ('a, 'p1, 'p2) t
-    [@@alloc __ @ m = (heap_global, a @ m)]]
-
-    [@@@kind.default_if_multiple k1 = ks]
-    [@@@kind.default_if_multiple k2 = ks]
-
-    (** [mapi] is like map. Additionally, it passes in the index of each element as the
-        first argument to the mapped function. *)
-    val mapi
-      : 'a 'p1 'p2 'b.
-      (('a, 'p1, 'p2) t[@kind k1])
-      -> f:(int -> ('a elt[@kind k1]) -> ('b elt[@kind k2]))
-      -> (('b, 'p1, 'p2) t[@kind k2])
-    [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
-
-    (** filter_mapi is like [filter_map]. Additionally, it passes in the index of each
-        element as the first argument to the mapped function. *)
-    val filter_mapi
-      : 'a 'p1 'p2 'b.
-      (('a, 'p1, 'p2) t[@kind k1])
-      -> f:
-           (int
-            -> ('a elt[@kind k1])
-            -> (('b elt[@kind k2]) Option0.t[@kind k2 or value_or_null]))
-      -> (('b, 'p1, 'p2) t[@kind k2])
-    [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
-
-    (** [concat_mapi t ~f] is like concat_map. Additionally, it passes the index as an
-        argument. *)
-    val concat_mapi
-      : 'a 'p1 'p2 'b.
-      (('a, 'p1, 'p2) t[@kind k1])
-      -> f:(int -> ('a elt[@kind k1]) -> (('b, 'p1, 'p2) t[@kind k2]))
-      -> (('b, 'p1, 'p2) t[@kind k2])
-    [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
-
-    [@@@kind.default_if_multiple k3 = ks]
-
-    (** [partition_mapi t ~f] is like partition_map. Additionally, it passes the index as
-        an argument. *)
-    val partition_mapi
-      : 'a 'p1 'p2 'b 'c.
-      (('a, 'p1, 'p2) t[@kind k1])
-      -> f:
-           (int
-            -> ('a elt[@kind k1])
-            -> ((('b elt[@kind k2]), ('c elt[@kind k3])) Either0.t
-               [@kind (k2 or value_or_null) (k3 or value_or_null)]))
-      -> (('b, 'p1, 'p2) t[@kind k2]) * (('c, 'p1, 'p2) t[@kind k3])
-    [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
-  end
-
-  module type Creators_with_index = Creators_with_index [@kind_set.explicit ks] [@alloc a]
-  [@@kind_set ks = value]
-
-  module type Generic_with_creators = sig
-    include Generic [@kind_set.explicit ks] [@alloc a]
-
-    include
-      Container.Creators
-    [@kind_set.explicit ks]
-    [@alloc a]
-    [@with:
-      [@@@kind.default k = ks]
-
-      type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k])
-      type 'a elt := ('a elt[@kind k])]
-
-    include
-      Creators_with_index
-    [@kind_set.explicit ks]
-    [@alloc a]
-    [@with:
-      [@@@kind.default k = ks]
-
-      type ('a, 'b, 'c) t := (('a, 'b, 'c) t[@kind k])
-      type 'a elt := ('a elt[@kind k])]
-  end
-
-  module type Generic_with_creators = sig
-    include Generic_with_creators [@kind_set.explicit ks] [@alloc a]
-
-    include
-      Container.Generic_with_creators
+      include
+        Creators_with_index
+      [@kind_set.explicit ks]
       [@alloc a]
-      with type ('a, 'b, 'c) t := ('a, 'b, 'c) t
-       and type 'a elt := 'a elt
-  end
-  [@@kind_set ks = value]]
+      [@with:
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
 
-  [%%template
-  [@@@alloc.default a @ m = (heap_global, stack_local)]
+        type ('a, _, _) t := (t[@kind k'])
+        type _ elt := (elt[@kind k'])]
+    end
 
-  (** Like [Generic_with_creators], but [mem] does not accept an [equal] function, since
-      [Make0_with_creators] already takes [Elt.equal]. *)
-
-  module type [@kind_set.explicit ks = (value, base_with_ext)] S0_with_creators = sig
-    include S0 [@kind_set.explicit ks] [@alloc a]
-
-    include
-      Container.S0_with_creators
-    [@kind_set.explicit ks]
-    [@alloc a]
-    [@with:
-      [@@@kind.default k = ks]
-
-      type t := (t[@kind k])
-      type elt := (elt[@kind k])]
-
-    include
-      Creators_with_index
-    [@kind_set.explicit ks]
-    [@alloc a]
-    [@with:
-      [@@@kind.default k = ks]
-
-      type ('a, _, _) t := (t[@kind k])
-      type _ elt := (elt[@kind k])]
+    module type S0_with_creators = S0_with_creators [@kind_set.explicit ks] [@alloc a]
+    [@@kind_set ks = value]
   end
 
-  module type S0_with_creators = S0_with_creators [@kind_set.explicit ks] [@alloc a]
-  [@@kind_set ks = value]
+  [@@@kind_set ks = (value, value_or_null, base_or_null_with_ext)]
 
-  [@@@kind_set.default.explicit ks = (value, value_or_null, base_with_ext)]
+  include struct
+    [@@@alloc.default a]
+    [@@@kind_set.default.explicit ks]
 
-  module type S1_with_creators = sig
-    include S1 [@kind_set.explicit ks] [@alloc a]
+    module type S1_with_creators = sig
+      include S1 [@kind_set.explicit ks] [@alloc a]
 
-    include
-      Container.S1_with_creators
-    [@kind_set.explicit ks]
-    [@alloc a]
-    [@with: type 'a t := ('a t[@kind k]) [@@kind k = ks]]
+      include
+        Container.S1_with_creators
+      [@kind_set.explicit ks]
+      [@alloc a]
+      [@with: type 'a t := ('a t[@kind k]) [@@kind k = ks]]
 
-    include
-      Creators_with_index
-    [@kind_set.explicit ks]
-    [@alloc a]
-    [@with:
-      [@@@kind.default k = ks]
+      include
+        Creators_with_index
+      [@kind_set.explicit ks]
+      [@alloc a]
+      [@with:
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
 
-      type ('a, _, _) t := ('a t[@kind k])
-      type 'a elt := 'a]
-  end
+        type ('a, _, _) t := ('a t[@kind k'])
+        type 'a elt := 'a]
+    end
 
-  module type S1_with_creators = S1_with_creators [@kind_set.explicit ks] [@alloc a]
-  [@@kind_set ks = value]]
+    module type%template S1_with_creators = S1_with_creators
+    [@kind_set.explicit ks] [@alloc a]
+    [@@kind_set ks = value] [@@alloc a]
+  end]
 
   module type Make_gen_arg = sig
     include Container.Make_gen_arg [@mode m]

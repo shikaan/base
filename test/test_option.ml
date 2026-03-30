@@ -62,6 +62,20 @@ let%expect_test "map2" =
   [%expect {| () |}]
 ;;
 
+let%expect_test "to_list, to_array and to_iarray" =
+  let test_fns =
+    [ (fun t -> [%sexp (Option.to_list t : int list)])
+    ; (fun t -> [%sexp (Option.to_array t : int array)])
+    ; (fun t -> [%sexp (Option.to_iarray t : int iarray)])
+    ]
+  in
+  List.iter test_fns ~f:(fun sexp_of ->
+    print_s (sexp_of None);
+    [%expect {| () |}];
+    print_s (sexp_of (Some 42));
+    [%expect {| (42) |}])
+;;
+
 [%%template
 let%expect_test "some_if_thunk{,_local}" =
   let print_opt = (Option.iter [@mode local]) ~f:(fun x -> Stdlib.print_int x) in

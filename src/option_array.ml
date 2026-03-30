@@ -17,19 +17,19 @@ open! Import
 module Cheap_option = struct
   (* This is taken from core. Rather than expose it in the public interface of base, just
      keep a copy around here. *)
-  let phys_same (type a b) (a : a) (b : b) = phys_equal a (Stdlib.Obj.magic b : a)
+  let phys_same (type a b) (a : a) (b : b) = phys_equal a (Obj.magic b : a)
 
   module T0 : sig
     type 'a t
 
-    val none : _ t
-    val some : 'a -> 'a t
-    val is_none : _ t -> bool
-    val is_some : _ t -> bool
-    val value_exn : 'a t -> 'a
-    val value_unsafe : 'a t -> 'a
-    val iter_some : 'a t -> f:('a -> unit) -> unit
-    val get_none : unit -> _ t
+    val none : 'a. 'a t
+    val some : 'a. 'a -> 'a t
+    val is_none : 'a. 'a t -> bool
+    val is_some : 'a. 'a t -> bool
+    val value_exn : 'a. 'a t -> 'a
+    val value_unsafe : 'a. 'a t -> 'a
+    val iter_some : 'a. 'a t -> f:('a -> unit) -> unit
+    val get_none : 'a. unit -> 'a t
   end = struct
     (* It is safe to claim that ['a t] is immutable data as long as ['a] is immutable
        data:
@@ -79,13 +79,13 @@ module Cheap_option = struct
     let is_some x = not (phys_equal x (get_none ()))
 
     let some (type a) (x : a) : a t =
-      if phys_same x (get_none ()) then get_none_substitute () else Stdlib.Obj.magic x
+      if phys_same x (get_none ()) then get_none_substitute () else Obj.magic x
     ;;
 
     let value_unsafe (type a) (x : a t) : a =
       if phys_equal x (get_none_substitute ())
-      then Stdlib.Obj.magic (get_none ())
-      else Stdlib.Obj.magic x
+      then Obj.magic (get_none ())
+      else Obj.magic x
     ;;
 
     let value_exn x =
@@ -123,7 +123,9 @@ module Cheap_option = struct
   include%template Sexpable.Of_sexpable1 [@modality portable] (Option) (T1)
 end
 
-type 'a t = 'a Cheap_option.t Uniform_array.t [@@deriving sexp, sexp_grammar]
+type 'a t = 'a Cheap_option.t Uniform_array.t
+
+[%%rederive type 'a t = 'a Cheap_option.t Uniform_array.t [@@deriving sexp, sexp_grammar]]
 
 let empty = Uniform_array.empty
 let get_empty = Uniform_array.get_empty

@@ -2,10 +2,6 @@ open! Import
 module Constructors = Option0
 include Constructors
 
-type 'a t = 'a option =
-  | None
-  | Some of 'a
-
 [%%template
 [@@@kind kr1 = (value & value)]
 [@@@kind kr2 = (value & value & value)]
@@ -15,10 +11,10 @@ type 'a t = 'a option =
   type 'a t = 'a option [@@deriving compare ~localize, globalize, hash, sexp_grammar]]
 
 include struct
-  [@@@kind.default k = (base_or_null, value & (base, kr1, kr2, kr3))]
+  [@@@kind.default k = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
 
   open struct
-    type nonrec 'a t = ('a t[@kind k]) =
+    type nonrec 'a t = ('a t[@kind.explicit k]) =
       | None
       | Some of 'a
   end
@@ -53,59 +49,61 @@ include struct
   ;;
 end
 
-[%%template
-[@@@kind.default k = (base_or_null, value & (base, kr1, kr2, kr3))]
+include struct
+  [%%template
+  [@@@kind.default k = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
 
-open struct
-  type nonrec 'a t = ('a t[@kind k]) =
-    | None
-    | Some of 'a
+  open struct
+    type nonrec 'a t = ('a t[@kind.explicit k]) =
+      | None
+      | Some of 'a
+  end
+
+  [@@@mode.default m = (global, local)]
+
+  let value t ~default =
+    match t with
+    | None -> default
+    | Some x -> x
+  ;;
+
+  let value_exn ?(here = Stdlib.Lexing.dummy_pos) ?error ?message t =
+    match t with
+    | Some x -> x
+    | None ->
+      let error =
+        match error, message with
+        | None, None ->
+          if Source_code_position.is_dummy here
+          then Error.of_string "Option.value_exn None"
+          else Error.create "Option.value_exn None" here Source_code_position0.sexp_of_t
+        | Some e, None -> e
+        | None, Some m -> Error.of_string m
+        | Some e, Some m -> Error.tag e ~tag:m
+      in
+      (match Error.raise error with
+       | (_ : Nothing.t) -> .)
+  ;;
+
+  let value_or_thunk o ~default =
+    match o with
+    | Some x -> x
+    | None -> default () [@exclave_if_local m]
+  ;;
+
+  let iter o ~f =
+    match o with
+    | None -> ()
+    | Some a -> f a
+  ;;
+
+  let value_map t ~default ~f =
+    match t with
+    | Some x -> f x [@exclave_if_local m]
+    | None -> default
+  [@@kind ki = k, ko = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
+  ;;]
 end
-
-[@@@mode.default m = (global, local)]
-
-let value t ~default =
-  match t with
-  | None -> default
-  | Some x -> x
-;;
-
-let value_exn ?(here = Stdlib.Lexing.dummy_pos) ?error ?message t =
-  match t with
-  | Some x -> x
-  | None ->
-    let error =
-      match error, message with
-      | None, None ->
-        if Source_code_position.is_dummy here
-        then Error.of_string "Option.value_exn None"
-        else Error.create "Option.value_exn None" here Source_code_position0.sexp_of_t
-      | Some e, None -> e
-      | None, Some m -> Error.of_string m
-      | Some e, Some m -> Error.tag e ~tag:m
-    in
-    (match Error.raise error with
-     | (_ : Nothing.t) -> .)
-;;
-
-let value_or_thunk o ~default =
-  match o with
-  | Some x -> x
-  | None -> default () [@exclave_if_local m]
-;;
-
-let iter o ~f =
-  match o with
-  | None -> ()
-  | Some a -> f a
-;;
-
-let value_map t ~default ~f =
-  match t with
-  | Some x -> f x [@exclave_if_local m]
-  | None -> default
-[@@kind ki = k, ko = (base_or_null, value & (base, kr1, kr2, kr3))]
-;;]
 
 let invariant f t = iter t ~f
 
@@ -119,6 +117,12 @@ let to_array t =
   match t with
   | None -> [||]
   | Some x -> [| x |]
+;;
+
+let to_iarray t =
+  match t with
+  | None -> Iarray0.unsafe_of_array__promise_no_mutation [||]
+  | Some x -> Iarray0.unsafe_of_array__promise_no_mutation [| x |]
 ;;
 
 let%template to_list t =
@@ -178,7 +182,7 @@ let equal f (t : (_ t[@kind k])) (t' : (_ t[@kind k])) =
   | None, None -> true
   | Some x, Some x' -> f x x'
   | _ -> false
-[@@kind k = (base_or_null, value & (base, kr1, kr2, kr3))]
+[@@kind k = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
 ;;
 
 let some x = Some x [@exclave_if_local m]
@@ -229,24 +233,29 @@ let try_with_join f =
   | exception _ -> None
 ;;
 
+let%template[@mode local] both x y =
+  match x, y with
+  | None, _ | _, None -> None
+  | Some x, Some y -> Some (x, y)
+;;
+
 [%%template
-[@@@kind.default
-  ki = (base_or_null, value & (base, kr1, kr2, kr3))
-  , ko = (base_or_null, value & (base, kr1, kr2, kr3))]
-
-let[@mode local] map (t : (_ t[@kind ki])) ~f : (_ t[@kind ko]) =
-  match t with
-  | None -> None
-  | Some a -> Some (f a)
-;;
-
-let[@mode global] map (t : (_ t[@kind ki])) ~f : (_ t[@kind ko]) =
-  match t with
-  | None -> None
-  | Some a -> Some (f a)
-;;
-
 [@@@mode.default m = (global, local)]
+
+[@@@kind_set.define
+  all_ks = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
+
+[@@@kind ko = all_ks]
+
+let[@kind ko] return a : (_ t[@kind ko]) = Some a [@exclave_if_local m]
+
+[@@@kind.default ki = all_ks, ko = ko]
+
+let map (t : (_ t[@kind ki])) ~f : (_ t[@kind ko]) =
+  match t with
+  | None -> None
+  | Some a -> Some (f a) [@exclave_if_local m ~reasons:[ Will_return_unboxed ]]
+;;
 
 let bind (t : (_ t[@kind ki])) ~f : (_ t[@kind ko]) =
   match t with
@@ -254,22 +263,12 @@ let bind (t : (_ t[@kind ki])) ~f : (_ t[@kind ko]) =
   | Some a -> f a [@exclave_if_local m]
 ;;]
 
-[%%template
-[@@@mode.default m = (global, local)]
-
-let return = (some [@mode m])]
-
-let%template[@mode local] both x y =
-  match x, y with
-  | None, _ | _, None -> None
-  | Some x, Some y -> Some (x, y)
-;;
-
 module Monad_arg = struct
   type 'a t = 'a option
 
   let return = return
-  let map = `Custom map
+  let custom_map = map
+  let map = `Custom custom_map
   let bind = bind
 end
 
@@ -313,3 +312,8 @@ module%template Local = struct
     end
   end
 end]
+
+include struct
+  let map = Monad_arg.custom_map
+  let bind = Monad_arg.bind
+end

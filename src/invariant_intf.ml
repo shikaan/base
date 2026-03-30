@@ -60,7 +60,7 @@ module type Invariant = sig
   end
 
   [%%template:
-  [@@@kind.default k = base]
+  [@@@kind.default k = base_or_null]
 
   (** [invariant t sexp_of_t f] runs [f ()], and if [f] raises, wraps the exception in an
       [Error.t] that states "invariant failed" and includes both the exception raised by
@@ -104,5 +104,5 @@ module type Invariant = sig
             Fields.iter ~foo:(check Foo.invariant) ~bar:(check Bar.invariant))
         ;;
       ]} *)
-  val check_field : 'a -> 'b t -> ('a, 'b) Field.t -> unit]
+  val check_field : 'a 'b. 'a -> 'b t -> ('a, 'b) Field.t -> unit]
 end

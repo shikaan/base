@@ -1,9 +1,9 @@
 module type List0 = sig
-  module Constructors : sig
-    type%template 'a t =
+  module%template Constructors : sig
+    type 'a t =
       | []
-      | ( :: ) of 'a * ('a t[@kind k])
-    [@@kind
+      | ( :: ) of 'a * ('a t[@kind.explicit k])
+    [@@kind.explicit
       k
       = ( base_non_value
         , value_or_null & value_or_null
@@ -12,20 +12,29 @@ module type List0 = sig
     [@@deriving compare ~localize, equal ~localize]
 
     type 'a t = 'a list [@@deriving compare ~localize, equal ~localize]
+
+    (*_ Expose the main [t] with explicit mangling. Having this last also makes it the
+        default constructors. *)
+    type 'a t = 'a list =
+      | []
+      | ( :: ) of 'a * 'a t
+    [@@kind.explicit value_or_null]
   end
 
   open Constructors
 
   val max_non_tailcall : int
-  val hd_exn : 'a. 'a t -> 'a
-  val tl_exn : 'a. 'a t -> 'a t
+
+  val%template hd_exn : 'a. 'a t -> 'a [@@mode l = (global, local)]
+  val%template tl_exn : 'a. 'a t -> 'a t [@@mode l = (global, local)]
+
   val unzip : 'a 'b. ('a * 'b) t -> 'a t * 'b t
   val is_empty : 'a. 'a list -> bool
 
   val%template partition_map
     : 'a 'b 'c.
     'a list -> f:('a -> ('b, 'c) Either0.t) -> 'b list * 'c list
-  [@@mode mi = (global, local)] [@@alloc a @ mo = (heap_global, stack_local)]
+  [@@mode li = (global, local)] [@@alloc a @ lo = (heap_global, stack_local)]
 
   [%%template:
   [@@@kind.default
@@ -36,16 +45,16 @@ module type List0 = sig
       , value_or_null & value_or_null & value_or_null & value_or_null )]
 
   val length : 'a. ('a t[@kind k]) -> int
-  val exists : 'a. ('a t[@kind k]) -> f:('a -> bool) -> bool [@@mode m = (local, global)]
-  val iter : 'a. ('a t[@kind k]) -> f:('a -> unit) -> unit [@@mode m = (local, global)]
+  val exists : 'a. ('a t[@kind k]) -> f:('a -> bool) -> bool [@@mode l = (local, global)]
+  val iter : 'a. ('a t[@kind k]) -> f:('a -> unit) -> unit [@@mode l = (local, global)]
 
   val rev_append : 'a. ('a t[@kind k]) -> ('a t[@kind k]) -> ('a t[@kind k])
-  [@@alloc __ @ m = (stack_local, heap_global)]
+  [@@alloc __ @ l = (stack_local, heap_global)]
 
   val rev : 'a. ('a t[@kind k]) -> ('a t[@kind k])
-  [@@alloc __ @ m = (stack_local, heap_global)]
+  [@@alloc __ @ l = (stack_local, heap_global)]
 
-  val for_all : 'a. ('a t[@kind k]) -> f:('a -> bool) -> bool [@@mode m = (local, global)]
+  val for_all : 'a. ('a t[@kind k]) -> f:('a -> bool) -> bool [@@mode l = (local, global)]
 
   [@@@kind ka = k]
 
@@ -66,7 +75,10 @@ module type List0 = sig
 
   val fold2_ok : 'a 'b 'c. 'a t -> 'b t -> init:'c -> f:('c -> 'a -> 'b -> 'c) -> 'c
   val exists2_ok : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> bool) -> bool
-  val iter2_ok : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit
+
+  val%template iter2_ok : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit
+  [@@mode l = (global, local)]
+
   val for_all2_ok : 'a 'b. 'a t -> 'b t -> f:('a -> 'b -> bool) -> bool
   val nontail_map : 'a 'b. 'a t -> f:('a -> 'b) -> 'b t
   val rev_map2_ok : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t
@@ -74,7 +86,7 @@ module type List0 = sig
   val partition : 'a. 'a t -> f:('a -> bool) -> 'a t * 'a t
 
   val%template fold_right : 'a 'acc. 'a t -> f:('a -> 'acc -> 'acc) -> init:'acc -> 'acc
-  [@@mode m = (local, global), mcc = (local, global)]
+  [@@mode l = (local, global), mcc = (local, global)]
 
   val fold_right2_ok : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c -> 'c) -> init:'c -> 'c
 end

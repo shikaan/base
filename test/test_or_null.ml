@@ -294,6 +294,14 @@ end = struct
     [%expect {| (value 42) |}]
   ;;
 
+  let invariant = Or_null.invariant
+
+  let%expect_test "invariant" =
+    Or_null.invariant (fun _ -> failwith "nope") Null;
+    Or_null.invariant (fun x -> print_s [%sexp (x : int)]) (This 3);
+    [%expect {| 3 |}]
+  ;;
+
   let%template[@mode m = (global, local)] call = (Or_null.call [@mode m])
 
   let%expect_test "call" =
@@ -674,4 +682,6 @@ end = struct
     in
     [%expect {| |}]
   ;;
+
+  module Export = Export
 end

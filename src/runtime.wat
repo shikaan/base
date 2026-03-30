@@ -1,4 +1,7 @@
 (module
+   (import "env" "caml_array_sub"
+      (func $caml_array_sub
+         (param (ref eq)) (param (ref eq)) (param (ref eq)) (result (ref eq))))
    (import "env" "caml_copy_int64"
       (func $caml_copy_int64 (param i64) (result (ref eq))))
    (import "env" "caml_copy_int32"
@@ -15,6 +18,9 @@
          (result (ref eq))))
    (import "env" "caml_create_bytes"
       (func $caml_create_bytes (param (ref eq)) (result (ref eq))))
+   (import "env" "caml_array_make"
+      (func $caml_array_make
+         (param (ref eq)) (param (ref eq)) (result (ref eq))))
    (import "env" "caml_make_vect"
       (func $caml_make_vect
          (param (ref eq)) (param (ref eq)) (result (ref eq))))
@@ -158,6 +164,7 @@
 
    (export "Base_unsafe_create_local_bytes" (func $caml_create_bytes))
 
+   (export "caml_array_make_local" (func $caml_array_make))
    (export "caml_make_local_vect" (func $caml_make_vect))
 
    (data $modulus_positive "float.ml: modulus should be positive")
@@ -213,6 +220,13 @@
          (else (local.get $y))))
 
    (export "base_array_unsafe_float_blit" (func $caml_floatarray_blit))
+
+   (func (export "Base_iarray_to_array_of_immediates")
+      (param $src (ref eq)) (param $len (ref eq)) (result (ref eq))
+      (call $caml_array_sub
+         (local.get $src)
+         (ref.i31 (i32.const 0))
+         (local.get $len)))
 
    (func (export "Base_string_concat_array")
       (param $str_array (ref eq)) (param $sep_ref (ref eq)) (result (ref eq))

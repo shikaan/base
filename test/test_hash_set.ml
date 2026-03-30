@@ -42,8 +42,6 @@ end = struct
   let sexp_of_m__t = Hash_set.sexp_of_m__t
   let m__t_of_sexp = Hash_set.m__t_of_sexp
   let m__t_sexp_grammar = Hash_set.m__t_sexp_grammar
-  let equal_m__t = Hash_set.equal_m__t
-  let equal__local_m__t = Hash_set.equal__local_m__t
 
   (* Testing generic container functionality. *)
 
@@ -434,10 +432,11 @@ end = struct
   ;;
 
   let%template equal = (Hash_set.equal [@mode m]) [@@mode m = (local, global)]
+  let%template[@mode m = (local, global)] equal_m__t = (Hash_set.equal_m__t [@mode m])
 
   let%expect_test "deriving equal" =
     let module Hs = struct
-      type t = { hs : Hash_set.M(Int).t } [@@deriving equal]
+      type%template t = { hs : Hash_set.M(Int).t } [@@deriving equal [@mode local]]
 
       let of_list lst = { hs = Hash_set.of_list (module Int) lst }
     end

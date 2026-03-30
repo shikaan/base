@@ -7,7 +7,7 @@ module Definitions = struct
     | Immediate
     | Stack
     | Heap
-  [@@deriving sexp ~stackify, compare]
+  [@@deriving sexp ~stackify, compare ~localize]
 
   type uniform_or_mixed =
     | Immediate
@@ -121,9 +121,9 @@ module type Obj = sig
   external%template magic : 'a 'b. ('a[@local_opt]) -> ('b[@local_opt]) = "%identity"
   [@@layout_poly]
   [@@mode
-    c = (uncontended, shared, contended)
+    c = (uncontended, shared, contended, read, immutable)
     , o = (many, once)
-    , p = (nonportable, portable)
+    , p = (nonportable, shareable, portable, observing, stateless)
     , u = (aliased, unique)]
 
   external%template magic_portable
@@ -131,19 +131,33 @@ module type Obj = sig
     ('a[@local_opt]) -> ('a[@local_opt])
     = "%identity"
   [@@layout_poly]
-  [@@mode c = (uncontended, shared, contended), o = (many, once), u = (aliased, unique)]
+  [@@mode
+    c = (uncontended, shared, contended, read, immutable)
+    , o = (many, once)
+    , u = (aliased, unique)]
 
   external%template magic_uncontended
     : 'a.
     ('a[@local_opt]) -> ('a[@local_opt])
     = "%identity"
   [@@layout_poly]
-  [@@mode o = (many, once), p = (nonportable, portable), u = (aliased, unique)]
+  [@@mode
+    o = (many, once)
+    , p = (nonportable, shareable, portable, observing, stateless)
+    , u = (aliased, unique)]
 
   external%template magic_many : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
   [@@layout_poly]
   [@@mode
     c = (uncontended, shared, contended)
+    , p = (nonportable, portable)
+    , u = (aliased, unique)]
+
+  external%template magic_unyielding : 'a. 'a -> 'a = "%identity"
+  [@@layout_poly]
+  [@@mode
+    c = (uncontended, shared, contended)
+    , o = (many, once)
     , p = (nonportable, portable)
     , u = (aliased, unique)]
 

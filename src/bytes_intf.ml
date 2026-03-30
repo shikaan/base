@@ -58,20 +58,22 @@ module type Bytes = sig
 
   (** [make len c] returns a newly-allocated byte sequence of length [len] filled with the
       byte [c]. *)
-  val make : int -> char -> t
+  val%template make : int -> char -> t
+  [@@alloc a @ m = (heap_global, stack_local)]
 
   (** [map f t] applies function [f] to every byte, in order, and builds the byte sequence
       with the results returned by [f]. *)
   val map : t -> f:(char -> char) -> t
 
-  val map__stack : t -> f:(char -> char) -> t
+  val%template map : t -> f:(char -> char) -> t [@@alloc stack]
 
   (** Like [map], but passes each character's index to [f] along with the char. *)
   val mapi : t -> f:(int -> char -> char) -> t
 
   (** [copy t] returns a newly-allocated byte sequence that contains the same bytes as
       [t]. *)
-  val copy : t -> t
+  val%template copy : t -> t
+  [@@alloc a @ m = (heap_global, stack_local)]
 
   (** [init len ~f] returns a newly-allocated byte sequence of length [len] with index [i]
       in the sequence being initialized with the result of [f i]. *)

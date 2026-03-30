@@ -8,7 +8,6 @@ module Definitions = struct
 
   (** @canonical Base.Hashtbl.Key *)
   module Key = struct
-    [@@@kind.default k = (additional, value)]
     [@@@mode.default m = (local, global), p = (nonportable, portable)]
 
     module type S = sig
@@ -21,7 +20,7 @@ module Definitions = struct
       val hash : t -> int
     end
 
-    type 'a t = ((module S with type t = 'a)[@kind k] [@mode m p])
+    type 'a t = ((module S with type t = 'a)[@mode m p])
   end
 
   module Merge_into_action = Dictionary_mutable.Merge_into_action
@@ -473,45 +472,46 @@ module Definitions = struct
     include sig
       type (!'a, !'b) t [@@deriving sexp_of] [@@kind k = all, v = all]
 
+      (*_ Unmangled [t] is shadowed below, so define [t] with explicit mangling. *)
+      type (!'a, !'b) t := (('a, 'b) t[@kind k v]) [@@kind.explicit k = all, v = all]
+
       [@@@kind k = all, v = all]
 
-      type (!'a, !'b) t := (('a, 'b) t[@kind k v])
-      type 'a key := ('a Key.t[@kind k] [@mode p]) [@@mode p = (nonportable, portable)]
+      type (!'a, !'b) t := (('a, 'b) t[@kind.explicit k v])
+      type 'a key := ('a Key.t[@mode p]) [@@mode p = (nonportable, portable)]
 
       [@@@kind.default k v]
+      [@@@kind k_create = k mod non_null separable]
 
       val create
-        :  ?growth_allowed:bool (** defaults to [true] *)
+        : 'a 'b.
+        ?growth_allowed:bool (** defaults to [true] *)
         -> ?size:int (** initial size -- default 0 *)
         -> ('a key[@mode p])
         -> ('a, 'b) t
       [@@mode p = (nonportable, portable)]
 
       val singleton
-        :  ?growth_allowed:bool
-        -> ?size:int
-        -> ('k key[@mode p])
-        -> 'k
-        -> 'v
-        -> ('k, 'v) t
+        : 'k 'v.
+        ?growth_allowed:bool -> ?size:int -> ('k key[@mode p]) -> 'k -> 'v -> ('k, 'v) t
       [@@mode p = (nonportable, portable)]
 
-      val length : ('k, 'v) t -> int [@@mode c = (uncontended, shared)]
-      val capacity : ('k, 'v) t -> int [@@mode c = (uncontended, shared)]
-      val growth_allowed : ('k, 'v) t -> bool [@@mode c = (uncontended, contended)]
-      val is_empty : ('k, 'v) t -> bool [@@mode c = (uncontended, shared)]
-      val add_exn : ('k, 'v) t -> key:'k -> data:'v -> unit
-      val add : ('k, 'v) t -> key:'k -> data:'v -> [ `Ok | `Duplicate ]
+      val length : 'k 'v. ('k, 'v) t -> int [@@mode c = (uncontended, shared)]
+      val capacity : 'k 'v. ('k, 'v) t -> int [@@mode c = (uncontended, shared)]
+      val growth_allowed : 'k 'v. ('k, 'v) t -> bool [@@mode c = (uncontended, contended)]
+      val is_empty : 'k 'v. ('k, 'v) t -> bool [@@mode c = (uncontended, shared)]
+      val add_exn : 'k 'v. ('k, 'v) t -> key:'k -> data:'v -> unit
+      val add : 'k 'v. ('k, 'v) t -> key:'k -> data:'v -> [ `Ok | `Duplicate ]
 
-      val find : ('k, 'v) t -> 'k -> ('v Option.t[@kind v])
+      val find : 'k 'v. ('k, 'v) t -> 'k -> ('v Option.t[@kind v])
       [@@mode c = (uncontended, shared)]
 
       val find_exn : 'k 'v. ('k, 'v) t -> 'k -> 'v [@@mode c = (uncontended, shared)]
-      val find_and_remove : ('k, 'v) t -> 'k -> ('v Option.t[@kind v])
-      val remove : ('k, 'v) t -> 'k -> unit
+      val find_and_remove : 'k 'v. ('k, 'v) t -> 'k -> ('v Option.t[@kind v])
+      val remove : 'k 'v. ('k, 'v) t -> 'k -> unit
       val mem : 'k 'v. ('k, 'v) t -> 'k -> bool [@@mode c = (uncontended, shared)]
-      val set : ('k, 'v) t -> key:'k -> data:'v -> unit
-      val clear : _ t -> unit
+      val set : 'k 'v. ('k, 'v) t -> key:'k -> data:'v -> unit
+      val clear : 'k 'v. ('k, 'v) t -> unit
 
       val find_and_call
         : 'k 'v 'a.
@@ -528,8 +528,25 @@ module Definitions = struct
         -> 'r
       [@@kind k = k, v = v, a = all, r = all] [@@mode c = (uncontended, shared)]
 
-      val update : ('k, 'v) t -> 'k -> f:(('v Option.t[@kind v]) -> 'v) -> unit
-      val update_and_return : ('k, 'v) t -> 'k -> f:(('v Option.t[@kind v]) -> 'v) -> 'v
+      val update : 'k 'v. ('k, 'v) t -> 'k -> f:(('v Option.t[@kind v]) -> 'v) -> unit
+
+      val update_and_return
+        : 'k 'v.
+        ('k, 'v) t -> 'k -> f:(('v Option.t[@kind v]) -> 'v) -> 'v
+
+      val filter_inplace : 'k 'v. ('k, 'v) t -> f:('v -> bool) -> unit
+      val filteri_inplace : 'k 'v. ('k, 'v) t -> f:(key:'k -> data:'v -> bool) -> unit
+      val filter_keys_inplace : 'k 'v. ('k, 'v) t -> f:('k -> bool) -> unit
+      val mapi_inplace : 'k 'v. ('k, 'v) t -> f:(key:'k -> data:'v -> 'v) -> unit
+      val map_inplace : 'k 'v. ('k, 'v) t -> f:('v -> 'v) -> unit
+
+      val filter_map_inplace
+        : 'k 'v.
+        ('k, 'v) t -> f:('v -> ('v Option.t[@kind v])) -> unit
+
+      val filter_mapi_inplace
+        : 'k 'v.
+        ('k, 'v) t -> f:(key:'k -> data:'v -> ('v Option.t[@kind v])) -> unit
 
       val change
         :  ('k, 'v) t
@@ -545,43 +562,51 @@ module Definitions = struct
       val iter : 'k 'v. ('k, 'v) t -> f:('v -> unit) -> unit
       [@@mode l = (global, local)] [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
+      val iter_keys : 'k 'v. ('k, 'v) t -> f:('k -> unit) -> unit
+      [@@mode l = (global, local)] [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
+
       val iteri : 'k 'v. ('k, 'v) t -> f:(key:'k -> data:'v -> unit) -> unit
       [@@mode l = (global, local)] [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
-      val find_or_add : ('k, 'v) t -> 'k -> default:(unit -> 'v) -> 'v
-      val findi_or_add : ('k, 'v) t -> 'k -> default:('k -> 'v) -> 'v
+      val find_or_add : 'k 'v. ('k, 'v) t -> 'k -> default:(unit -> 'v) -> 'v
+      val findi_or_add : 'k 'v. ('k, 'v) t -> 'k -> default:('k -> 'v) -> 'v
 
-      val keys : ('k, 'v) t -> ('k List.t[@kind k])
+      val keys : 'k 'v. ('k, 'v) t -> ('k List.t[@kind k])
       [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
-      val data : ('k, 'v) t -> ('v List.t[@kind v])
+      val data : 'k 'v. ('k, 'v) t -> ('v List.t[@kind v])
       [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
-      val choose_exn : ('k, 'v) t -> 'k * 'v [@@mode c = (uncontended, shared)]
+      val choose_exn : 'k 'v. ('k, 'v) t -> 'k * 'v [@@mode c = (uncontended, shared)]
+      val invariant : 'k 'v. ('k -> unit) -> ('v -> unit) -> ('k, 'v) t -> unit
     end
 
     include sig
       [@@@kind.default k = all, v = all]
 
       val add_multi
-        :  (('k, ('v List.t[@kind v])) t[@kind k value_or_null])
-        -> key:'k
-        -> data:'v
-        -> unit
+        : 'k 'v.
+        (('k, ('v List.t[@kind v])) t[@kind k value_or_null]) -> key:'k -> data:'v -> unit
 
       val remove_multi
-        :  (('k, ('v List.t[@kind v])) t[@kind k value_or_null])
-        -> 'k
-        -> unit
+        : 'k 'v.
+        (('k, ('v List.t[@kind v])) t[@kind k value_or_null]) -> 'k -> unit
 
       val find_multi
-        :  (('k, ('v List.t[@kind v])) t[@kind k value_or_null])
+        : 'k 'v.
+        (('k, ('v List.t[@kind v])) t[@kind k value_or_null])
         -> 'k
         -> ('v List.t[@kind v])
       [@@mode c = (uncontended, shared)]
 
-      val map : (('k, 'v) t[@kind k v]) -> f:('v -> 'w) -> (('k, 'w) t[@kind k v'])
+      val map
+        : 'k 'v 'w.
+        (('k, 'v) t[@kind k v]) -> f:('v -> 'w) -> (('k, 'w) t[@kind k v'])
       [@@kind k = k, v = v, v' = all]
+    end
+
+    include sig
+      val to_alist : 'k 'v. ('k, 'v) t -> ('k * 'v) list
     end
   end
 

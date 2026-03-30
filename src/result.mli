@@ -64,12 +64,27 @@ val of_option_or_thunk : 'ok 'err. 'ok option -> error:(unit -> 'err) -> ('ok, '
 val iter : 'ok 'err. ('ok, 'err) t -> f:('ok -> unit) -> unit
 val iter_error : 'ok 'err. ('ok, 'err) t -> f:('err -> unit) -> unit
 
-val%template map
-  : 'a 'b 'err.
-  (('a, 'err) t[@kind ki]) -> f:('a -> 'b) -> (('b, 'err) t[@kind ko])
-[@@kind ki = base_or_null_with_imm, ko = base_or_null_with_imm]
+[%%template:
+[@@@mode.default m = (global, local)]
+[@@@kind ko = base_or_null_with_imm]
 
-val map_error : 'ok 'err 'c. ('ok, 'err) t -> f:('err -> 'c) -> ('ok, 'c) t
+val return : 'ok 'err. 'ok -> (('ok, 'err) t[@kind ko])
+[@@zero_alloc_if_local m] [@@kind ko]
+
+[@@@kind.default ki = base_or_null_with_imm, ko = ko]
+
+val bind
+  : 'a 'b 'err.
+  (('a, 'err) t[@kind ki])
+  -> f:('a -> (('b, 'err) t[@kind ko]))
+  -> (('b, 'err) t[@kind ko])
+
+val map : 'a 'b 'err. (('a, 'err) t[@kind ki]) -> f:('a -> 'b) -> (('b, 'err) t[@kind ko])]
+
+val%template map_error
+  : 'ok 'err 'c.
+  (('ok, 'err) t[@kind k]) -> f:('err -> 'c) -> (('ok, 'c) t[@kind k])
+[@@kind k = base_or_null_with_imm] [@@alloc __ @ m = (heap_global, stack_local)]
 
 (** Returns [Ok] if both are [Ok] and [Error] otherwise. *)
 val combine
@@ -106,8 +121,9 @@ val combine_errors_unit : 'err. (unit, 'err) t list -> (unit, 'err list) t
       ;;
     ]} *)
 val to_either : 'ok 'err. ('ok, 'err) t -> ('ok, 'err) Either0.t
+[@@zero_alloc_if_local m]
 
-val of_either : 'ok 'err. ('ok, 'err) Either0.t -> ('ok, 'err) t]
+val of_either : 'ok 'err. ('ok, 'err) Either0.t -> ('ok, 'err) t [@@zero_alloc_if_local m]]
 
 (** [ok_if_true] returns [Ok ()] if [bool] is true, and [Error error] if it is false. *)
 val ok_if_true : 'err. bool -> error:'err -> (unit, 'err) t

@@ -36,6 +36,7 @@ module type Creators_and_accessors_and_transformers_generic =
 
 module type Creators_generic = Creators_generic
 module type%template Elt_plain = Set.Elt_plain [@mode m] [@@mode m = (local, global)]
+module type Enum = Enum
 module type For_deriving = For_deriving
 module type S_poly = S_poly
 
@@ -82,6 +83,14 @@ let%expect_test _ =
 ;;
 
 (** sexp conversions and grammar *)
+
+let sexp_of_t = sexp_of_t
+
+let%expect_test "sexp_of_t" =
+  let set = Set.of_list (module Int) [ 3; 1; 4; 1; 5; 9; 2; 6 ] in
+  print_s [%sexp (set : (int, (_[@sexp.phantom])) Set.t)];
+  [%expect {| (1 2 3 4 5 6 9) |}]
+;;
 
 let%template[@alloc a = (heap, stack)] sexp_of_m__t = (sexp_of_m__t [@alloc a])
 let m__t_of_sexp = m__t_of_sexp
@@ -244,7 +253,7 @@ module Tree = struct
   let%expect_test _ =
     quickcheck_m (module Tree_int) ~f:(fun tree ->
       let tree = Tree_int.value tree in
-      let sexp = sexp_of_t Int.sexp_of_t [%sexp_of: _] tree in
+      let sexp = sexp_of_t Int.sexp_of_t tree in
       require_equal
         (module Sexp)
         sexp
@@ -257,6 +266,10 @@ module Tree = struct
   (** polymorphic constructor - untested *)
 
   let empty_without_value_restriction = empty_without_value_restriction
+
+  (** Enum module *)
+
+  module Enum = Test_enum
 
   (** expert interface - untested *)
 
@@ -297,7 +310,7 @@ module Using_comparator = struct
   let%expect_test _ =
     quickcheck_m (module Instance) ~f:(fun t ->
       let t = Instance.value t in
-      let sexp = sexp_of_t Int.sexp_of_t [%sexp_of: _] t in
+      let sexp = sexp_of_t Int.sexp_of_t t in
       require_equal (module Sexp) sexp ([%sexp_of: Set.M(Int).t] t);
       let round_trip = t_of_sexp_direct ~comparator:Int.comparator Int.t_of_sexp sexp in
       require_equal (module Instance.Value) round_trip t);
@@ -344,10 +357,4 @@ module Using_comparator = struct
       Functor.Transformers with module Types := Instances.Types.Using_comparator)
 
   module Tree = Tree
-end
-
-(** Enum module *)
-
-module Private = struct
-  module Enum = Test_enum
 end

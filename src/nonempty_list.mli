@@ -8,14 +8,23 @@ open! Import
     convenience, some functions here are also ppx_template'd over local, and we hope to
     fully merge the two after list is localized *)
 
-type%template 'a t = ( :: ) of 'a * ('a List.t[@kind k])
-[@@deriving compare ~localize, equal ~localize] [@@kind k = base_non_value]
+[%%template:
+(** [all_ks] defines the set of kinds used in this file. This allows us to make more
+    targeted changes without being constrained by the small set of built in kind-sets. *)
+
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
+
+type 'a t = ( :: ) of 'a * ('a List.t[@kind k])
+[@@deriving compare ~localize, equal ~localize, sexp_of ~stackify]
+[@@kind k = all_ks_non_value]
 
 type 'a t = ( :: ) of 'a * 'a list
 [@@deriving compare ~localize, equal ~localize, hash, globalize]
 
 [%%rederive:
-  type nonrec 'a t = 'a t = ( :: ) of 'a * 'a list [@@deriving sexp, sexp_grammar]]
+  type nonrec 'a t = 'a t = ( :: ) of 'a * 'a list
+  [@@deriving sexp ~stackify, sexp_grammar]]
 
 type 'a nonempty_list := 'a t
 
@@ -28,12 +37,47 @@ include%template
 
 include Indexed_container.S1 with type 'a t := 'a t
 
-[%%template:
-[@@@kind k = (base_non_value, value_or_null)]
+(*_ Unmangled [t] gets shadowed below, so we alias a mangled [t] to it first. *)
+  type%template 'a t := ('a t[@kind k]) [@@kind.explicit k = value_or_null]
 
-type 'a t := ('a t[@kind k])
+[%%template:
+[@@@kind k = all_ks]
+
+type 'a t := ('a t[@kind.explicit k])
 
 [@@@kind.default k]
+
+val length : 'a. 'a t -> int
+
+[@@@mode.default m = (global, local)]
+
+val of_list : 'a. ('a List.t[@kind k]) -> 'a t option [@@zero_alloc_if_local m]
+val of_list_or_null : 'a. ('a List.t[@kind k]) -> 'a t or_null [@@zero_alloc]
+val of_list_error : 'a. ('a List.t[@kind k]) -> 'a t Or_error.t [@@zero_alloc_if_local m]
+val of_list_exn : 'a. ('a List.t[@kind k]) -> 'a t [@@zero_alloc]
+val to_list : 'a. 'a t -> ('a List.t[@kind k]) [@@zero_alloc]
+val hd : 'a. 'a t -> 'a [@@zero_alloc]
+val tl : 'a. 'a t -> ('a List.t[@kind k]) [@@zero_alloc]
+val iter : 'a. 'a t -> f:('a -> unit) -> unit
+val iteri : 'a. 'a t -> f:(int -> 'a -> unit) -> unit
+
+(** [min_elt'] and [max_elt'] differ from [min_elt] and [max_elt] (included in
+    [Container.S1]) in that they don't return options. *)
+val min_elt' : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a
+
+val max_elt' : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a
+val nth : 'a. 'a t -> int -> ('a Option.t[@kind k])
+val nth_exn : 'a. 'a t -> int -> 'a
+val reduce : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a
+val last : 'a. 'a t -> 'a]
+
+[%%template:
+[@@@kind k = all_ks]
+
+type 'a t := ('a t[@kind.explicit k])
+
+[@@@kind.default k]
+[@@@alloc.default __ @ m = (stack_local, heap_global)]
 
 val create : 'a. 'a -> ('a List.t[@kind k]) -> 'a t
 
@@ -44,42 +88,23 @@ val create : 'a. 'a -> ('a List.t[@kind k]) -> 'a t
     [210]. *)
 val init : 'a. int -> f:(int -> 'a) -> 'a t
 
-val of_list : 'a. ('a List.t[@kind k]) -> 'a t option
-[@@mode m = (global, local)] [@@zero_alloc_if_local m]
-
-val of_list_or_null : 'a. ('a List.t[@kind k]) -> 'a t or_null
-[@@mode m = (global, local)] [@@zero_alloc]
-
-val of_list_error : 'a. ('a List.t[@kind k]) -> 'a t Or_error.t
-[@@mode m = (global, local)]
-
-val of_list_exn : 'a. ('a List.t[@kind k]) -> 'a t
-[@@mode m = (global, local)] [@@zero_alloc]
-
-val to_list : 'a. 'a t -> ('a List.t[@kind k]) [@@mode m = (global, local)] [@@zero_alloc]
-val singleton : 'a. 'a -> 'a t
-val cons : 'a. 'a -> 'a t -> 'a t
-val hd : 'a. 'a t -> 'a
-val tl : 'a. 'a t -> ('a List.t[@kind k])
-val nth : 'a. 'a t -> int -> ('a Option.t[@kind k])
-val nth_exn : 'a. 'a t -> int -> 'a
-val reduce : 'a. 'a t -> f:('a -> 'a -> 'a) -> 'a
-
-val reverse : 'a. 'a t -> 'a t
-[@@alloc __ @ m = (stack_local, heap_global)] [@@zero_alloc_if_local m]
-
-val append : 'a. 'a t -> ('a List.t[@kind k]) -> 'a t
-val ( @ ) : 'a. 'a t -> 'a t -> 'a t
+val append : 'a. 'a t -> ('a List.t[@kind k]) -> 'a t [@@zero_alloc_if_local m]
 val filter : 'a. 'a t -> f:('a -> bool) -> ('a List.t[@kind k])
 val filteri : 'a. 'a t -> f:(int -> 'a -> bool) -> ('a List.t[@kind k])
-val last : 'a. 'a t -> 'a
-val iter : 'a t -> f:('a -> unit) -> unit [@@mode m = (global, local)]
-val iteri : 'a t -> f:(int -> 'a -> unit) -> unit
-val length : 'a. 'a t -> int]
+val singleton : 'a. 'a -> 'a t [@@zero_alloc_if_local m]
+val cons : 'a. 'a -> 'a t -> 'a t [@@zero_alloc_if_local m]
+val reverse : 'a. 'a t -> 'a t [@@zero_alloc_if_local m]]
 
 [%%template:
-[@@@kind.default
-  ka = (base_non_value, value_or_null), kb = (base_non_value, value_or_null)]
+[@@@kind.default ka = all_ks, kb = all_ks]
+
+val fold_nonempty
+  : 'a 'acc.
+  ('a t[@kind ka]) -> init:('a -> 'acc) -> f:('acc -> 'a -> 'acc) -> 'acc
+[@@mode ma = (local, global), mb = (local, global)]
+
+[@@@mode.default ma = (local, global)]
+[@@@alloc.default __ @ mb = (heap_global, stack_local)]
 
 val map : 'a 'b. ('a t[@kind ka]) -> f:('a -> 'b) -> ('b t[@kind kb])
 val mapi : 'a 'b. ('a t[@kind ka]) -> f:(int -> 'a -> 'b) -> ('b t[@kind kb])
@@ -92,43 +117,40 @@ val filter_mapi
   : 'a 'b.
   ('a t[@kind ka]) -> f:(int -> 'a -> ('b Option.t[@kind kb])) -> ('b List.t[@kind kb])
 
-val concat_map : 'a 'b. ('a t[@kind ka]) -> f:('a -> ('b t[@kind kb])) -> ('b t[@kind kb])]
+val concat_map : 'a 'b. ('a t[@kind ka]) -> f:('a -> ('b t[@kind kb])) -> ('b t[@kind kb])
+val bind : 'a 'b. ('a t[@kind ka]) -> f:('a -> ('b t[@kind kb])) -> ('b t[@kind kb])]
 
-val reduce : 'a t -> f:('a -> 'a -> 'a) -> 'a
-val append' : 'a list -> 'a t -> 'a t
-val unzip : ('a * 'b) t -> 'a t * 'b t
-val unzip3 : ('a * 'b * 'c) t -> 'a t * 'b t * 'c t
-val zip : 'a t -> 'b t -> ('a * 'b) t List.Or_unequal_lengths.t
-val zip_exn : 'a t -> 'b t -> ('a * 'b) t
+val ( @ ) : 'a. 'a t -> 'a t -> 'a t
+val append' : 'a. 'a List.t -> 'a t -> 'a t
+val unzip : 'a 'b. ('a * 'b) t -> 'a t * 'b t
+val unzip3 : 'a 'b 'c. ('a * 'b * 'c) t -> 'a t * 'b t * 'c t
+val zip : 'a 'b. 'a t -> 'b t -> ('a * 'b) t List.Or_unequal_lengths.t
+val zip_exn : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
 val zip3 : 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t List.Or_unequal_lengths.t
 val zip3_exn : 'a t -> 'b t -> 'c t -> ('a * 'b * 'c) t
-val map2 : 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t List.Or_unequal_lengths.t
-val map2_exn : 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t
-val filter_opt : 'a option t -> 'a list
-val concat : 'a t nonempty_list -> 'a t
-val drop_last : 'a t -> 'a list
-val to_sequence : 'a t -> 'a Sequence.t
-val sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
-val group : 'a t -> break:('a -> 'a -> bool) -> 'a t t
-val sort_and_group : 'a t -> compare:('a -> 'a -> int) -> 'a t t
-val stable_sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
-val stable_dedup : 'a t -> compare:('a -> 'a -> int) -> 'a t
-val dedup_and_sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
+val map2 : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t List.Or_unequal_lengths.t
+val map2_exn : 'a 'b 'c. 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t
+val filter_opt : 'a. 'a option t -> 'a list
+val concat : 'a. 'a t nonempty_list -> 'a t
+val drop_last : 'a. 'a t -> 'a list
+val to_sequence : 'a. 'a t -> 'a Sequence.t
+val sort : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
+val group : 'a. 'a t -> break:('a -> 'a -> bool) -> 'a t t
+val sort_and_group : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t t
+val stable_sort : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
+val stable_dedup : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
+val dedup_and_sort : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a t
 val permute : ?random_state:Random.State.t -> 'a t -> 'a t
-val random_element : ?random_state:Random.State.t -> 'a t -> 'a
-val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
-
-val%template fold_nonempty : 'a t -> init:('a -> 'acc) -> f:('acc -> 'a -> 'acc) -> 'acc
-[@@mode ma = (global, local), mb = (global, local)]
-
-val fold_right : 'a t -> init:'b -> f:('a -> 'b -> 'b) -> 'b
-val folding_map : 'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'c t
-val fold_map : 'a t -> init:'acc -> f:('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
+val random_element : 'a. ?random_state:Random.State.t -> 'a t -> 'a
+val cartesian_product : 'a 'b. 'a t -> 'b t -> ('a * 'b) t
+val fold_right : 'a 'b. 'a t -> init:'b -> f:('a -> 'b -> 'b) -> 'b
+val folding_map : 'a 'b 'c. 'a t -> init:'b -> f:('b -> 'a -> 'b * 'c) -> 'c t
+val fold_map : 'a 'b 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
 val findi_exn : 'a t -> f:(int -> 'a -> bool) -> int * 'a
 
 (** [all_equal] returns a single element of the list that is equal to all other elements,
     or [None] if no such element exists. *)
-val all_equal : 'a t -> equal:('a -> 'a -> bool) -> 'a option
+val all_equal : 'a t -> equal:('a -> 'a -> bool) -> 'a Option.t
 
 (** [is_sorted t ~compare] returns [true] iff for all adjacent [a1; a2] in [t],
     [compare a1 a2 <= 0]. *)
@@ -138,17 +160,11 @@ val is_sorted : 'a t -> compare:('a -> 'a -> int) -> bool
     [compare a1 a2 < 0]. *)
 val is_sorted_strictly : 'a t -> compare:('a -> 'a -> int) -> bool
 
-(** [min_elt'] and [max_elt'] differ from [min_elt] and [max_elt] (included in
-    [Container.S1]) in that they don't return options. *)
-val min_elt' : 'a t -> compare:('a -> 'a -> int) -> 'a
-
-val max_elt' : 'a t -> compare:('a -> 'a -> int) -> 'a
-
 (** [transpose] takes an n x m list of lists to an m x n list of lists. Hence, if the
     input lists are all non-empty, the output lists will also all be non-empty. *)
-val transpose : 'a t t -> 'a t t option
+val transpose : 'a. 'a t t -> 'a t t Option.t
 
-val transpose_exn : 'a t t -> 'a t t
+val transpose_exn : 'a. 'a t t -> 'a t t
 
 (** Like [Map.add_multi], but comes with a guarantee that the range of the returned map is
     all nonempty lists. *)
@@ -206,13 +222,13 @@ val map_of_list_with_key_multi_rev
   -> ('k, 'v t, 'cmp) Map.t
 
 (** Like [Result.combine_errors] but for non-empty lists *)
-val combine_errors : ('ok, 'err) Result.t t -> ('ok t, 'err t) Result.t
+val combine_errors : 'ok 'err. ('ok, 'err) Result.t t -> ('ok t, 'err t) Result.t
 
 (** Like [Result.combine_errors_unit] but for non-empty lists *)
 val combine_errors_unit : (unit, 'err) Result.t t -> (unit, 'err t) Result.t
 
 (** Like [Or_error.combine_errors] but for non-empty lists *)
-val combine_or_errors : 'a Or_error.t t -> 'a t Or_error.t
+val combine_or_errors : 'a. 'a Or_error.t t -> 'a t Or_error.t
 
 (** Like [Or_error.combine_errors_unit] but for non-empty lists *)
 val combine_or_errors_unit : unit Or_error.t t -> unit Or_error.t
@@ -322,4 +338,4 @@ end
 val partition3_map
   :  'a t
   -> f:('a -> [ `Fst of 'fst | `Snd of 'snd | `Trd of 'trd ])
-  -> ('fst, 'snd, 'trd) Partition3.t
+  -> ('fst, 'snd, 'trd) Partition3.t]

@@ -3,26 +3,33 @@ module Either = Either0
 include Result0
 
 [%%template
-let map x ~f : (_ t[@kind ko]) =
+[@@@mode.default m = (global, local)]
+[@@@kind ko = base_or_null_with_imm]
+
+let[@kind ko] return x : (_ t[@kind ko]) = Ok x [@exclave_if_local m]
+
+[@@@kind.default ki = base_or_null_with_imm, ko = ko]
+
+let bind x ~f : (_ t[@kind ko]) =
   match (x : (_ t[@kind ki])) with
-  | Error err -> Error err
-  | Ok x -> Ok (f x)
-[@@kind ki = base_or_null_with_imm, ko = base_or_null_with_imm]
+  | Error err -> Error err [@exclave_if_local m]
+  | Ok x -> f x [@exclave_if_local m]
 ;;
 
-include
+let map x ~f : (_ t[@kind ko]) =
+  match[@exclave_if_local m ~reasons:[ Will_return_unboxed ]] (x : (_ t[@kind ki])) with
+  | Error err -> Error err
+  | Ok x -> Ok (f x)
+;;]
+
+include%template
   Monad.Make2 [@kind value_or_null mod maybe_null] [@mode local] [@modality portable] (struct
     type nonrec ('a, 'b) t = ('a, 'b) t
 
-    let bind x ~f =
-      match x with
-      | Error _ as x -> x
-      | Ok x -> f x
-    ;;
-
+    let bind = bind
     let map = `Custom map
-    let return x = Ok x
-  end)]
+    let return = return
+  end)
 
 let invariant check_ok check_error t =
   match t with
@@ -33,10 +40,11 @@ let invariant check_ok check_error t =
 let fail x = Error x
 let failf format = Printf.ksprintf fail format
 
-let map_error t ~f =
-  match t with
+let%template map_error (type a) (t : ((a, _) t[@kind k])) ~f : ((a, _) t[@kind k]) =
+  match[@exclave_if_stack a] t with
   | Ok _ as x -> x
   | Error x -> Error (f x)
+[@@kind k = base_or_null_with_imm] [@@alloc a @ m = (heap_global, stack_local)]
 ;;
 
 module%template Error =

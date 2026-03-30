@@ -9,13 +9,13 @@
 open! Import
 
 (** See [Base.Array] for comments. *)
-type 'a t [@@deriving sexp, sexp_grammar, compare ~localize]
+type 'a t [@@deriving sexp ~stackify, sexp_grammar, compare ~localize]
 
 val invariant : 'a. 'a t -> unit
 val empty : 'a. 'a t
 
 (** For obtaining uncontended access to [empty] from a portable function. *)
-val get_empty : unit -> _ t
+val get_empty : 'a. unit -> 'a t
 
 val create : 'a. len:int -> 'a -> 'a t
 val singleton : 'a. 'a -> 'a t
@@ -66,7 +66,7 @@ val of_list : 'a. 'a list -> 'a t
 val of_list_rev : 'a. 'a list -> 'a t
 val to_list : 'a. 'a t -> 'a list
 
-include Blit.S1 with type 'a t := 'a t
+include%template Blit.S1 [@kind.explicit value_or_null] with type 'a t := 'a t
 
 val copy : 'a. 'a t -> 'a t
 val exists : 'a. 'a t -> f:('a -> bool) -> bool

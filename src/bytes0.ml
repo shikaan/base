@@ -96,7 +96,10 @@ end
 include Primitives
 
 let max_length = Sys.max_string_length
-let blit = Stdlib.Bytes.blit
+
+let blit ~src ~src_pos ~dst ~dst_pos ~len =
+  Stdlib.Bytes.blit ~src ~src_pos ~dst ~dst_pos ~len
+;;
 
 external string_length : string -> int = "%string_length"
 
@@ -292,7 +295,7 @@ let map t ~(f : _ -> _) =
     r)
 ;;
 
-let map__stack t ~(f : _ -> _) =
+let%template[@alloc stack] map t ~(f : _ -> _) =
   let l = length t in
   if l = 0
   then get_empty ()
@@ -349,9 +352,11 @@ external unsafe_of_string_promise_no_mutation
   -> (bytes[@local_opt])
   = "%bytes_of_string"
 
-let copy src =
+let%template copy src =
   let len = length src in
-  let dst = create len in
-  unsafe_blit ~src ~src_pos:0 ~dst ~dst_pos:0 ~len;
-  dst
+  (let dst = (create [@alloc a]) len in
+   unsafe_blit ~src ~src_pos:0 ~dst ~dst_pos:0 ~len;
+   dst)
+  [@exclave_if_stack a]
+[@@alloc a = (heap, stack)]
 ;;
