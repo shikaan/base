@@ -7,32 +7,22 @@ open struct
   (* Testing helpers. Not part of [Enum]'s interface, so not exported. *)
 
   module Tree = Set.Tree
-  module Enum = Set.Private.Enum
+  module Enum = Tree.Enum
 
-  let rec fold_right_increasing t ~init:acc ~f =
-    match (t : (_, _, Enum.increasing) Enum.t) with
-    | Null -> acc
-    | This (More (elt, tree, tail)) ->
-      let acc = fold_right_increasing tail ~init:acc ~f in
-      let acc = Set.Tree.fold_right tree ~init:acc ~f in
-      f elt acc
+  let equal_enum =
+    Comparable.lift
+      [%equal: (int * (int, _) Tree.Expert.t) list]
+      ~f:Enum.to_list_with_trees
   ;;
 
-  let rec fold_right_decreasing t ~init:acc ~f =
-    match (t : (_, _, Enum.decreasing) Enum.t) with
-    | Null -> acc
-    | This (More (elt, tree, tail)) ->
-      let acc = fold_right_decreasing tail ~init:acc ~f in
-      let acc = Set.Tree.fold tree ~init:acc ~f:(fun acc elt -> f elt acc) in
-      f elt acc
+  let to_list_increasing (t : (_, _, Enum.increasing) Enum.t) =
+    List.concat_map (Enum.to_list_with_trees t) ~f:(fun (elt, tree) ->
+      elt :: Tree.to_list tree)
   ;;
 
-  let to_list_increasing t =
-    fold_right_increasing t ~init:[] ~f:(fun elt acc -> elt :: acc)
-  ;;
-
-  let to_list_decreasing t =
-    fold_right_decreasing t ~init:[] ~f:(fun elt acc -> elt :: acc)
+  let to_list_decreasing (t : (_, _, Enum.decreasing) Enum.t) =
+    List.concat_map (Enum.to_list_with_trees t) ~f:(fun (elt, tree) ->
+      elt :: List.rev (Tree.to_list tree))
   ;;
 
   let elts_gen =
@@ -80,23 +70,23 @@ open struct
     let rec loop ~pos ~len tail =
       match len with
       | 0 -> Generator.return tail
-      | 1 ->
-        Generator.return (This (Enum.More (Iarray.get elts pos, Tree.Expert.empty, tail)))
+      | 1 -> Generator.return ((Iarray.get elts pos, Tree.Expert.empty) :: tail)
       | _ ->
         (* Choose where to split between [More] nodes. *)
         (match%bind Generator.int_uniform_inclusive 0 (len - 1) with
          | 0 ->
            (* Put everything in one node. *)
            let%map tree = tree_of_elts_gen elts ~pos:(pos + 1) ~len:(len - 1) in
-           This (Enum.More (Iarray.get elts pos, tree, tail))
+           (Iarray.get elts pos, tree) :: tail
          | idx ->
            (* Put suffix in a final [More] node, recursively split up the prefix. *)
            let%bind tree =
              tree_of_elts_gen elts ~pos:(pos + idx + 1) ~len:(len - idx - 1)
            in
-           loop ~pos ~len:idx (This (Enum.More (Iarray.get elts (pos + idx), tree, tail))))
+           loop ~pos ~len:idx ((Iarray.get elts (pos + idx), tree) :: tail))
     in
-    let%map.Generator enum = loop ~pos ~len Null in
+    let%map.Generator list = loop ~pos ~len [] in
+    let enum = Enum.of_list_with_trees list in
     assert (
       [%equal: int iarray]
         (Iarray.of_list (to_list_increasing enum))
@@ -109,24 +99,24 @@ open struct
     let rec loop ~pos ~len tail =
       match len with
       | 0 -> Generator.return tail
-      | 1 ->
-        Generator.return (This (Enum.More (Iarray.get elts pos, Tree.Expert.empty, tail)))
+      | 1 -> Generator.return ((Iarray.get elts pos, Tree.Expert.empty) :: tail)
       | _ ->
         (* Choose where to split between [More] nodes. *)
         (match%bind Generator.int_uniform_inclusive 0 (len - 1) with
          | 0 ->
            (* Put everything in one node. *)
            let%map tree = tree_of_elts_gen elts ~pos ~len:(len - 1) in
-           This (Enum.More (Iarray.get elts (pos + len - 1), tree, tail))
+           (Iarray.get elts (pos + len - 1), tree) :: tail
          | idx ->
            (* Put suffix in a final [More] node, recursively split up the prefix. *)
            let%bind tree = tree_of_elts_gen elts ~pos ~len:idx in
            loop
              ~pos:(pos + idx + 1)
              ~len:(len - idx - 1)
-             (This (Enum.More (Iarray.get elts (pos + idx), tree, tail))))
+             ((Iarray.get elts (pos + idx), tree) :: tail))
     in
-    let%map.Generator enum = loop ~pos ~len Null in
+    let%map.Generator list = loop ~pos ~len [] in
+    let enum = Enum.of_list_with_trees list in
     assert (
       [%equal: int iarray]
         (Iarray.of_list_rev (to_list_decreasing enum))
@@ -137,6 +127,11 @@ open struct
   let enum_increasing_gen () =
     let%bind elts = elts_gen in
     enum_increasing_of_elts_gen elts ~pos:0 ~len:(Iarray.length elts)
+  ;;
+
+  let enum_decreasing_gen () =
+    let%bind elts = elts_gen in
+    enum_decreasing_of_elts_gen elts ~pos:0 ~len:(Iarray.length elts)
   ;;
 
   let tree_and_enum_increasing_gen () =
@@ -157,37 +152,24 @@ open struct
     tree, enum
   ;;
 
-  let add_elts_to_tree elts tree =
-    Iarray.fold elts ~init:tree ~f:(fun acc elt ->
-      Set.Tree.add ~comparator:Int.comparator acc elt)
-  ;;
-
-  let rec add_to_enum enum x : (_, _, Enum.increasing) Enum.t =
-    match (enum : (_, _, Enum.increasing) Enum.t) with
-    | Null -> This (More (x, Tree.Expert.empty, Null))
-    | This (More (elt, tree, tail)) ->
+  let rec add_to_enum_as_list enum_as_list x =
+    match enum_as_list with
+    | [] -> [ x, Tree.Expert.empty ]
+    | (elt, tree) :: tail ->
       (match Int.compare x elt with
-       | c when c < 0 -> This (More (x, Tree.Expert.empty, enum))
+       | c when c < 0 -> (x, Tree.Expert.empty) :: enum_as_list
        | c when c > 0 ->
          (match tail with
-          | This (More (other, _, _)) when Int.compare x other >= 0 ->
-            This (More (elt, tree, add_to_enum tail x))
-          | _ -> This (More (elt, Set.Tree.add ~comparator:Int.comparator tree x, tail)))
-       | _ -> enum)
+          | (other, _) :: _ when Int.compare x other >= 0 ->
+            (elt, tree) :: add_to_enum_as_list tail x
+          | _ -> (elt, Set.Tree.add ~comparator:Int.comparator tree x) :: tail)
+       | _ -> enum_as_list)
   ;;
 
   let add_elts_to_enum elts enum =
-    Iarray.fold elts ~init:enum ~f:(fun acc elt -> add_to_enum acc elt)
-  ;;
-
-  let pair_of_tree_gen () =
-    Generator.union
-      [ Generator.both (tree_gen ()) (tree_gen ())
-      ; (let%map tree0 = tree_gen ()
-         and elts1 = elts_gen
-         and elts2 = elts_gen in
-         add_elts_to_tree elts1 tree0, add_elts_to_tree elts2 tree0)
-      ]
+    Iarray.fold elts ~init:(Enum.to_list_with_trees enum) ~f:(fun acc elt ->
+      add_to_enum_as_list acc elt)
+    |> Enum.of_list_with_trees
   ;;
 
   let pair_of_enum_increasing_gen () =
@@ -200,14 +182,6 @@ open struct
       ]
   ;;
 
-  module Enum_with_sexp = struct
-    type ('a, 'cmp, 'direction) nonempty = ('a, 'cmp, 'direction) Enum.nonempty =
-      | More of 'a * ('a, 'cmp) Tree.Expert.t * ('a, 'cmp, 'direction) t
-
-    and ('a, 'cmp, 'direction) t = ('a, 'cmp, 'direction) nonempty or_null
-    [@@deriving sexp_of]
-  end
-
   module Int_list = struct
     type t = int list [@@deriving equal, sexp_of]
   end
@@ -218,7 +192,7 @@ open struct
       * ( int
           , (Int.comparator_witness[@sexp.opaque])
           , (Enum.increasing[@sexp.opaque]) )
-          Enum_with_sexp.t
+          Enum.t
     [@@deriving sexp_of]
 
     let quickcheck_generator = tree_and_enum_increasing_gen ()
@@ -231,7 +205,7 @@ open struct
       * ( int
           , (Int.comparator_witness[@sexp.opaque])
           , (Enum.decreasing[@sexp.opaque]) )
-          Enum_with_sexp.t
+          Enum.t
     [@@deriving sexp_of]
 
     let quickcheck_generator = tree_and_enum_decreasing_gen ()
@@ -262,20 +236,23 @@ open struct
       ( int
         , (Int.comparator_witness[@sexp.opaque])
         , (Enum.increasing[@sexp.opaque]) )
-        Enum_with_sexp.t
+        Enum.t
     [@@deriving sexp_of]
 
+    let equal = equal_enum
     let quickcheck_generator = enum_increasing_gen ()
     let quickcheck_shrinker = Shrinker.atomic
   end
 
-  module Pair_of_tree = struct
+  module Enum_decreasing = struct
     type nonrec t =
-      (int, (Int.comparator_witness[@sexp.opaque])) Tree.Expert.t
-      * (int, (Int.comparator_witness[@sexp.opaque])) Tree.Expert.t
+      ( int
+        , (Int.comparator_witness[@sexp.opaque])
+        , (Enum.decreasing[@sexp.opaque]) )
+        Enum.t
     [@@deriving sexp_of]
 
-    let quickcheck_generator = pair_of_tree_gen ()
+    let quickcheck_generator = enum_decreasing_gen ()
     let quickcheck_shrinker = Shrinker.atomic
   end
 
@@ -284,11 +261,11 @@ open struct
       ( int
         , (Int.comparator_witness[@sexp.opaque])
         , (Enum.increasing[@sexp.opaque]) )
-        Enum_with_sexp.t
+        Enum.t
       * ( int
           , (Int.comparator_witness[@sexp.opaque])
           , (Enum.increasing[@sexp.opaque]) )
-          Enum_with_sexp.t
+          Enum.t
     [@@deriving sexp_of]
 
     let quickcheck_generator = pair_of_enum_increasing_gen ()
@@ -298,14 +275,55 @@ end
 
 (* Testing exports of [Enum]: *)
 
+module Which = Enum.Which
+
 type increasing = Enum.increasing
 type decreasing = Enum.decreasing
 
-type ('a, 'cmp, 'direction) nonempty = ('a, 'cmp, 'direction) Enum.nonempty =
-  | More of 'a * ('a, 'cmp) Tree.t * ('a, 'cmp, 'direction) t
+type ('a, 'cmp, 'direction) nonempty = ('a, 'cmp, 'direction) Enum.nonempty
+and ('a, 'cmp, 'direction) t = ('a, 'cmp, 'direction) Enum.t [@@deriving sexp_of]
 
-and ('a, 'cmp, 'direction) t = ('a, 'cmp, 'direction) nonempty or_null
-[@@deriving sexp_of]
+let to_list_with_trees = Enum.to_list_with_trees
+let of_list_with_trees = Enum.of_list_with_trees
+
+let%expect_test "to_list_with_trees / of_list_with_trees" =
+  quickcheck_m (module Enum_increasing) ~f:(fun enum ->
+    require_equal
+      (module Enum_increasing)
+      (Enum.of_list_with_trees (Enum.to_list_with_trees enum))
+      enum)
+;;
+
+let elt = Enum.elt
+let next = Enum.next
+
+let%expect_test "elt & next" =
+  quickcheck_m (module Enum_increasing) ~f:(fun enum ->
+    require_equal
+      (module Int_list)
+      (Sequence.unfold ~init:enum ~f:(fun enum ->
+         match enum with
+         | Null -> None
+         | This enum -> Some (Enum.elt enum, Enum.next enum))
+       |> Sequence.to_list)
+      (List.concat_map (Enum.to_list_with_trees enum) ~f:(fun (x, tree) ->
+         x :: Tree.to_list tree)))
+;;
+
+let next_decreasing = Enum.next_decreasing
+
+let%expect_test "elt & next_decreasing" =
+  quickcheck_m (module Enum_decreasing) ~f:(fun enum ->
+    require_equal
+      (module Int_list)
+      (Sequence.unfold ~init:enum ~f:(fun enum ->
+         match enum with
+         | Null -> None
+         | This enum -> Some (Enum.elt enum, Enum.next_decreasing enum))
+       |> Sequence.to_list)
+      (List.concat_map (Enum.to_list_with_trees enum) ~f:(fun (x, tree) ->
+         x :: List.rev (Tree.to_list tree))))
+;;
 
 let cons = Enum.cons
 
@@ -380,58 +398,107 @@ let%expect_test "starting_at_decreasing" =
   [%expect {| |}]
 ;;
 
-let compare = Enum.compare
+let which = Enum.which
+let next2 = Enum.next2
 
-let%expect_test "compare" =
-  quickcheck_m (module Pair_of_enum) ~f:(fun (enum1, enum2) ->
-    require_equal
-      (module Ordering)
-      (Ordering.of_int (Enum.compare Int.compare enum1 enum2))
-      (Ordering.of_int
-         ([%compare: int list] (to_list_increasing enum1) (to_list_increasing enum2))))
-;;
-
-let iter = Enum.iter
-
-let%expect_test "iter" =
-  quickcheck_m (module Enum_increasing) ~f:(fun enum ->
-    require_equal
-      (module Int_list)
-      (let queue = Queue.create () in
-       Enum.iter enum ~f:(Queue.enqueue queue);
-       Queue.to_list queue)
-      (to_list_increasing enum))
-;;
-
-let iter2 = Enum.iter2
-
-let%expect_test "iter2" =
+let%expect_test "next2" =
   quickcheck_m (module Pair_of_enum) ~f:(fun (enum1, enum2) ->
     require_equal
       (module struct
-        type t = [ `Both of int * int | `Left of int | `Right of int ] list
-        [@@deriving equal, sexp_of]
+        type t = (int, int) Map.Merge_element.t list [@@deriving equal, sexp_of]
       end)
-      (let queue = Queue.create () in
-       Enum.iter2 Int.compare enum1 enum2 ~f:(Queue.enqueue queue);
-       Queue.to_list queue)
-      (let queue = Queue.create () in
-       Set.Tree.iter2
-         ~comparator:Int.comparator
-         (Set.Tree.of_list ~comparator:Int.comparator (to_list_increasing enum1))
-         (Set.Tree.of_list ~comparator:Int.comparator (to_list_increasing enum2))
-         ~f:(Queue.enqueue queue);
-       Queue.to_list queue))
+      (Sequence.unfold ~init:(enum1, enum2) ~f:(fun (enum1, enum2) ->
+         match enum1, enum2 with
+         | Null, Null -> None
+         | This enum1, Null -> Some (`Left (elt enum1), (next enum1, enum2))
+         | Null, This enum2 -> Some (`Right (elt enum2), (enum1, next enum2))
+         | This enum1, This enum2 ->
+           let which = Enum.which enum1 enum2 ~compare_elt:Int.compare in
+           let vs = Enum.which_merge_element enum1 enum2 ~which in
+           let #(enum1, enum2) = Enum.next2 enum1 enum2 ~which in
+           Some (vs, (enum1, enum2)))
+       |> Sequence.to_list)
+      (List.merge
+         (to_list_increasing enum1 |> List.map ~f:(fun v -> `Left v))
+         (to_list_increasing enum2 |> List.map ~f:(fun v -> `Right v))
+         ~compare:(Comparable.lift Int.compare ~f:(fun (`Left x | `Right x) -> x))
+       |> List.fold_right ~init:[] ~f:(fun pair acc ->
+         match pair, acc with
+         | (`Left v1, `Right v2 :: rest | `Right v2, `Left v1 :: rest) when v1 = v2 ->
+           `Both (v1, v2) :: rest
+         | _ -> (pair :> _ Map.Merge_element.t) :: acc)))
 ;;
 
-let symmetric_diff = Enum.symmetric_diff
+let which_elt = Enum.which_elt
+let which_merge_element = Enum.which_merge_element
+let next2_drop_phys_equal = Enum.next2_drop_phys_equal
 
-let%expect_test "symmetric_diff" =
-  quickcheck_m (module Pair_of_tree) ~f:(fun (tree1, tree2) ->
-    require_equal
-      (module struct
-        type t = (int, int) Either.t Sequence.t [@@deriving equal, sexp_of]
-      end)
-      (Enum.symmetric_diff tree1 tree2 ~compare_elt:Int.compare)
-      (Set.Tree.symmetric_diff tree1 tree2 ~comparator:Int.comparator))
+let%expect_test "next2 vs next2_drop_phys_equal" =
+  quickcheck_m (module Pair_of_enum) ~f:(fun (enum1, enum2) ->
+    let rec loop (enum1, enum2) (enum1_drop_phys_equal, enum2_drop_phys_equal) =
+      match (enum1, enum2), (enum1_drop_phys_equal, enum2_drop_phys_equal) with
+      | (Null, Null), (Null, Null) -> ()
+      | ((This _ as a), Null), ((This _ as b), Null) -> require (equal_enum a b)
+      | (Null, (This _ as a)), (Null, (This _ as b)) -> require (equal_enum a b)
+      | (This enum1, This enum2), (This enum1_drop_phys_equal, This enum2_drop_phys_equal)
+        ->
+        (* Step using [next2] and [next2_drop_phys_equal], respectively. *)
+        let whicha = which enum1 enum2 ~compare_elt:Int.compare in
+        let whichb =
+          which enum1_drop_phys_equal enum2_drop_phys_equal ~compare_elt:Int.compare
+        in
+        let ak = which_elt enum1 enum2 ~which:whicha in
+        let bk = which_elt enum1_drop_phys_equal enum2_drop_phys_equal ~which:whichb in
+        let avs = which_merge_element enum1 enum2 ~which:whicha in
+        let bvs =
+          which_merge_element enum1_drop_phys_equal enum2_drop_phys_equal ~which:whichb
+        in
+        let #(a1, a2) = next2 enum1 enum2 ~which:whicha in
+        let #(b1, b2) =
+          next2_drop_phys_equal enum1_drop_phys_equal enum2_drop_phys_equal ~which:whichb
+        in
+        (match avs, bvs with
+         (* When [a]s match [b]s: *)
+         | `Left av, `Left bv when ak = bk && av = bv -> loop (a1, a2) (b1, b2)
+         | `Right av, `Right bv when ak = bk && av = bv -> loop (a1, a2) (b1, b2)
+         | `Both (av1, av2), `Both (bv1, bv2) when ak = bk && av1 = bv1 && av2 = bv2 ->
+           loop (a1, a2) (b1, b2)
+         (* When [b]s dropped something [phys_equal], advance past it in [a]s: *)
+         | `Both (av1, av2), _ when phys_equal av1 av2 ->
+           loop (a1, a2) (This enum1_drop_phys_equal, This enum2_drop_phys_equal)
+         (* Otherwise something is wrong: *)
+         | _ ->
+           print_cr
+             [%message
+               "different results"
+                 (ak : int)
+                 (bk : int)
+                 (avs : (int, int) Map.Merge_element.t)
+                 (bvs : (int, int) Map.Merge_element.t)])
+      | _ ->
+        (match
+           (* Fix up when dropping [phys_equal] parts caused the outer match to fail *)
+           match enum1, enum2 with
+           | Null, _ | _, Null -> None
+           | This enum1, This enum2 ->
+             (match which enum1 enum2 ~compare_elt:Int.compare with
+              | Both as which when phys_equal (Enum.elt enum1) (Enum.elt enum2) ->
+                let #(enum1, enum2) = Enum.next2 enum1 enum2 ~which in
+                Some (enum1, enum2)
+              | _ -> None)
+         with
+         | Some (enum1, enum2) ->
+           loop (enum1, enum2) (enum1_drop_phys_equal, enum2_drop_phys_equal)
+         | None ->
+           (* Otherwise, again, something is wrong: *)
+           print_cr
+             [%message
+               "different states"
+                 (enum1 : (int, _, _) t)
+                 (enum2 : (int, _, _) t)
+                 (enum1_drop_phys_equal : (int, _, _) t)
+                 (enum2_drop_phys_equal : (int, _, _) t)])
+    in
+    loop (enum1, enum2) (enum1, enum2));
+  [%expect {| |}]
 ;;

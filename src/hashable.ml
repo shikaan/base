@@ -36,16 +36,16 @@ let hash_param = Stdlib.Hashtbl.hash_param
 let hash = Stdlib.Hashtbl.hash
 let poly = { hash; compare = Poly.compare; sexp_of_t = (fun _ -> Sexp.Atom "_") }
 
-let%template[@kind k = (value, float64, bits64)] of_key
-  : type (a : k). ((module Key with type t = a)[@kind k] [@modality p]) -> a t @ p
+let%template of_key
+  : type (a : any). ((module Key with type t = a)[@modality p]) @ immutable -> a t @ p
   =
   fun (module Key) ->
   { hash = Key.hash; compare = Key.compare; sexp_of_t = Key.sexp_of_t }
 [@@modality p = (portable, nonportable)]
 ;;
 
-let%template[@kind k = (value, float64, bits64)] to_key
-  : type (a : k). a t @ p -> ((module Key with type t = a)[@kind k] [@modality p]) @ p
+let%template to_key
+  : type (a : any). a t @ p -> ((module Key with type t = a)[@modality p]) @ p
   =
   fun { hash; compare; sexp_of_t } ->
   (module struct
@@ -55,6 +55,6 @@ let%template[@kind k = (value, float64, bits64)] to_key
     let compare = compare
     let sexp_of_t = sexp_of_t
   end : Key
-    with type t = a[@kind k] [@modality p])
+    with type t = a[@modality p])
 [@@modality p = (portable, nonportable)]
 ;;

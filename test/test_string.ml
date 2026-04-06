@@ -1954,3 +1954,173 @@ end
         "a,bb,ccc"
     ;;
   end]
+
+module%test Index_from = struct
+  module Outcome = struct
+    type t =
+      | Found
+      | Not_found
+      | Out_of_bounds
+    [@@deriving equal, sexp_of]
+  end
+
+  module Fn = struct
+    type t =
+      | String__index_from
+      | String__rindex_from
+      | String__index_from_exn
+      | String__rindex_from_exn
+      | String__Escaping__index_from
+      | String__Escaping__rindex_from
+      | String__Escaping__index_from_exn
+      | String__Escaping__rindex_from_exn
+    [@@deriving enumerate, to_string]
+
+    let to_string t = String.substr_replace_all (to_string t) ~pattern:"__" ~with_:"."
+    let sexp_of_t t = Sexp.Atom (to_string t)
+
+    (* Test escaping against backslash, a standard escaping character. *)
+    let escape_char = '\\'
+
+    (* Which direction the function scans. *)
+    let is_left_to_right = function
+      | String__index_from
+      | String__index_from_exn
+      | String__Escaping__index_from
+      | String__Escaping__index_from_exn -> true
+      | String__rindex_from
+      | String__rindex_from_exn
+      | String__Escaping__rindex_from
+      | String__Escaping__rindex_from_exn -> false
+    ;;
+
+    (* Whether the function uses escaping. *)
+    let is_escaping = function
+      | String__index_from
+      | String__rindex_from
+      | String__index_from_exn
+      | String__rindex_from_exn -> false
+      | String__Escaping__index_from
+      | String__Escaping__rindex_from
+      | String__Escaping__index_from_exn
+      | String__Escaping__rindex_from_exn -> true
+    ;;
+
+    (* Check outcome against an option-producing function. *)
+    let optional fn string index char : Outcome.t list =
+      match fn string index char with
+      | Some (_ : int) -> [ Found ]
+      | None -> [ Not_found ]
+      | exception _ -> [ Out_of_bounds ]
+    ;;
+
+    (* Check outcome against an exception-raising function. An exception might mean a
+       bounds error, or a search failure. *)
+    let exceptional fn string index char : Outcome.t list =
+      match fn string index char with
+      | (_ : int) -> [ Found ]
+      | exception _ -> [ Not_found; Out_of_bounds ]
+    ;;
+
+    (* Compute the actual outcome of the function. *)
+    let actual t string index char =
+      match t with
+      | String__index_from -> optional String.index_from string index char
+      | String__rindex_from -> optional String.rindex_from string index char
+      | String__index_from_exn -> exceptional String.index_from_exn string index char
+      | String__rindex_from_exn -> exceptional String.rindex_from_exn string index char
+      | String__Escaping__index_from ->
+        optional (String.Escaping.index_from ~escape_char) string index char
+      | String__Escaping__rindex_from ->
+        optional (String.Escaping.rindex_from ~escape_char) string index char
+      | String__Escaping__index_from_exn ->
+        exceptional (String.Escaping.index_from_exn ~escape_char) string index char
+      | String__Escaping__rindex_from_exn ->
+        exceptional (String.Escaping.rindex_from_exn ~escape_char) string index char
+    ;;
+
+    (* Replace all escape sequences with the escape character, so all other characters
+       only show up where they are literal; e.g.: [{|ab\tcd\nef|}] -> [{|ab\\cd\\ef|}] *)
+    let elide_escaped string =
+      let escaping = ref false in
+      String.map string ~f:(fun char ->
+        if !escaping
+        then (
+          escaping := false;
+          escape_char)
+        else if Char.equal char escape_char
+        then (
+          escaping := true;
+          escape_char)
+        else char)
+    ;;
+
+    (* Compute the expected outcome of the function. *)
+    let expect t string index char : Outcome.t =
+      let left_to_right = is_left_to_right t in
+      let in_bounds =
+        let open Int.O in
+        match left_to_right with
+        | true -> 0 <= index && index <= String.length string
+        | false -> -1 <= index && index <= String.length string - 1
+      in
+      match in_bounds with
+      | false -> Out_of_bounds
+      | true ->
+        let (string : (string, Outcome.t) result) =
+          match is_escaping t with
+          | false -> Ok string
+          | true ->
+            (match Char.equal char escape_char with
+             | false -> Ok (elide_escaped string)
+             | true ->
+               (* Looking for unescaped escape character - it cannot be found. *)
+               Error Not_found)
+        in
+        (match string with
+         | Error outcome -> outcome
+         | Ok string ->
+           let string =
+             match left_to_right with
+             | true -> String.drop_prefix string index
+             | false -> String.prefix string (index + 1)
+           in
+           if String.mem string char then Found else Not_found)
+    ;;
+  end
+
+  let example_strings =
+    [ (* empty string *)
+      ""
+    ; (* non-printing characters *)
+      "\000\255"
+    ; (* backslashes that might count as escaping *)
+      {|\"Hello, world!\"|}
+    ]
+  ;;
+
+  (* For each function, test a variety of strings, characters, and indices to search. *)
+  let%expect_test ("index_from out-of-bounds" [@tags "no-js", "no-wasm"]) =
+    List.iter Fn.all ~f:(fun fn ->
+      require_does_not_raise (fun () ->
+        List.iter example_strings ~f:(fun string ->
+          List.iter Char.all ~f:(fun char ->
+            for index = -10 to String.length string + 10 do
+              let actual = Fn.actual fn string index char in
+              let expect = Fn.expect fn string index char in
+              match List.mem actual expect ~equal:Outcome.equal with
+              | true -> ()
+              | false ->
+                raise_s
+                  [%message
+                    "unexpected outcome"
+                      (fn : Fn.t)
+                      (string : string)
+                      (index : int)
+                      (char : char)
+                      (actual : Outcome.t list)
+                      (expect : Outcome.t)]
+            done))));
+    [%expect {| |}]
+  ;;
+end

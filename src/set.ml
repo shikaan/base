@@ -1,15 +1,17 @@
-(***********************************************************************
- *
- *                           Objective Caml
- *
- *            Xavier Leroy, projet Cristal, INRIA Rocquencourt
- *
- *  Copyright 1996 Institut National de Recherche en Informatique et
- *  en Automatique.  All rights reserved.  This file is distributed
- *  under the terms of the Apache 2.0 license. See ../THIRD-PARTY.txt
- *  for details.
- *
- ***********************************************************************)
+[@@@ocamlformat "disable"]
+(***********************************************************************)
+(*                                                                     *)
+(*                           Objective Caml                            *)
+(*                                                                     *)
+(*            Xavier Leroy, projet Cristal, INRIA Rocquencourt         *)
+(*                                                                     *)
+(*  Copyright 1996 Institut National de Recherche en Informatique et   *)
+(*  en Automatique.  All rights reserved.  This file is distributed    *)
+(*  under the terms of the Apache 2.0 license. See ../THIRD-PARTY.txt  *)
+(*  for details.                                                       *)
+(*                                                                     *)
+(***********************************************************************)
+[@@@ocamlformat "enable"]
 
 (* Sets over ordered types *)
 
@@ -54,8 +56,9 @@ module Tree0 = struct
         ; global_ right : ('a, 'cmp) t
         ; weight : int
         }
+  [@@deriving sexp_of]
 
-  type ('a, 'cmp) tree = ('a, 'cmp) t
+  type ('a, 'cmp) tree = ('a, 'cmp) t [@@deriving sexp_of]
 
   let globalize0 : 'a 'cmp. local_ ('a, 'cmp) t -> ('a, 'cmp) t = function
     | Empty -> Empty
@@ -702,7 +705,7 @@ module Tree0 = struct
     diff s1 s2
   ;;
 
-  module Enum : Private.Enum with type ('a, 'cmp) tree := ('a, 'cmp) tree = struct
+  module Enum0 : Enum with type ('a, 'cmp) tree := ('a, 'cmp) tree = struct
     type increasing
     type decreasing
 
@@ -710,6 +713,17 @@ module Tree0 = struct
       | More of 'a * ('a, 'cmp) tree * ('a, 'cmp, 'direction) t
 
     and ('a, 'cmp, 'direction) t = ('a, 'cmp, 'direction) nonempty or_null
+    [@@deriving sexp_of]
+
+    let[@tail_mod_cons] rec to_list_with_trees = function
+      | Null -> []
+      | This (More (a, t, e)) -> (a, t) :: to_list_with_trees e
+    ;;
+
+    let[@tail_mod_cons] rec of_list_with_trees = function
+      | [] -> Null
+      | (a, t) :: e -> This (More (a, t, of_list_with_trees e))
+    ;;
 
     let rec cons s (e : (_, _, increasing) t) : (_, _, increasing) t =
       match s with
@@ -727,8 +741,8 @@ module Tree0 = struct
         cons_right r (This (More (v, l, e)))
     ;;
 
-    let of_set s : (_, _, increasing) t = cons s Null
-    let of_set_right s : (_, _, decreasing) t = cons_right s Null
+    let[@inline always] of_set s : (_, _, increasing) t = cons s Null
+    let[@inline always] of_set_right s : (_, _, decreasing) t = cons_right s Null
 
     let starting_at_increasing t key compare : (_, _, increasing) t =
       let rec loop t e =
@@ -752,75 +766,131 @@ module Tree0 = struct
       loop t Null
     ;;
 
+    let[@inline always] elt (More (v, _, _)) = v
+    let[@inline always] next (More (_, t, e)) = cons t e
+    let[@inline always] next_decreasing (More (_, t, e)) = cons_right t e
+
+    module Which = struct
+      type t =
+        | Left
+        | Right
+        | Both
+    end
+
+    let[@inline always] which t1 t2 ~compare_elt : Which.t =
+      match compare_elt (elt t1) (elt t2) with
+      | c when c < 0 -> Left
+      | c when c > 0 -> Right
+      | _ -> Both
+    ;;
+
+    let[@inline always] which_elt t1 t2 ~which =
+      match (which : Which.t) with
+      | Left -> elt t1
+      | Right -> elt t2
+      | Both -> elt t1
+    ;;
+
+    let[@inline always] which_merge_element t1 t2 ~which =
+      match (which : Which.t) with
+      | Left -> `Left (elt t1)
+      | Right -> `Right (elt t2)
+      | Both -> `Both (elt t1, elt t2)
+    ;;
+
+    let[@inline always] next2 t1 t2 ~which =
+      match (which : Which.t) with
+      | Left -> #(next t1, This t2)
+      | Right -> #(This t1, next t2)
+      | Both -> #(next t1, next t2)
+    ;;
+
+    let[@inline always] next2_drop_phys_equal t1 t2 ~which =
+      match (which : Which.t) with
+      | Left -> #(next t1, This t2)
+      | Right -> #(This t1, next t2)
+      | Both ->
+        (match t1, t2 with
+         | More (_, tree1, rest1), More (_, tree2, rest2) ->
+           if phys_equal tree1 tree2
+           then #(rest1, rest2)
+           else #(cons tree1 rest1, cons tree2 rest2))
+    ;;
+  end
+
+  module Enum = struct
+    include Enum0
+
     let compare compare_elt e1 e2 =
       let rec loop e1 e2 =
         match e1, e2 with
         | Null, Null -> 0
-        | Null, _ -> -1
-        | _, Null -> 1
-        | This (More (v1, r1, e1)), This (More (v2, r2, e2)) ->
-          let c = compare_elt v1 v2 in
-          if c <> 0
-          then c
-          else if phys_equal r1 r2
-          then loop e1 e2
-          else loop (cons r1 e1) (cons r2 e2)
+        | This _, Null -> 1
+        | Null, This _ -> -1
+        | This e1, This e2 ->
+          (match which e1 e2 ~compare_elt with
+           | Left -> -1
+           | Right -> 1
+           | Both as which ->
+             let #(e1, e2) = next2_drop_phys_equal e1 e2 ~which in
+             loop e1 e2)
       in
       loop e1 e2
     ;;
 
-    let rec iter ~f = function
+    let rec iter ~f t =
+      match t with
       | Null -> ()
-      | This (More (a, tree, enum)) ->
-        f a;
-        iter (cons tree enum) ~f
+      | This enum ->
+        f (elt enum);
+        iter (next enum) ~f
     ;;
 
     let iter2 compare_elt t1 t2 ~f =
       let rec loop t1 t2 =
         match t1, t2 with
         | Null, Null -> ()
-        | Null, _ -> iter t2 ~f:(fun a -> f (`Right a)) [@nontail]
-        | _, Null -> iter t1 ~f:(fun a -> f (`Left a)) [@nontail]
-        | This (More (a1, tree1, enum1)), This (More (a2, tree2, enum2)) ->
-          let compare_result = compare_elt a1 a2 in
-          if compare_result = 0
-          then (
-            f (`Both (a1, a2));
-            loop (cons tree1 enum1) (cons tree2 enum2))
-          else if compare_result < 0
-          then (
-            f (`Left a1);
-            loop (cons tree1 enum1) t2)
-          else (
-            f (`Right a2);
-            loop t1 (cons tree2 enum2))
+        | Null, This _ -> iter t2 ~f:(fun a -> f (`Right a)) [@nontail]
+        | This _, Null -> iter t1 ~f:(fun a -> f (`Left a)) [@nontail]
+        | This t1, This t2 ->
+          (* Trying to force specialization so we only dispatch on key order once. *)
+          let f which =
+            f ((which_merge_element [@inlined]) t1 t2 ~which);
+            (next2 [@inlined]) t1 t2 ~which
+          in
+          let #(t1, t2) =
+            match which t1 t2 ~compare_elt with
+            | Left as which -> (f [@inlined]) which
+            | Right as which -> (f [@inlined]) which
+            | Both as which -> (f [@inlined]) which
+          in
+          loop t1 t2
       in
       loop t1 t2 [@nontail]
     ;;
 
     let symmetric_diff t1 t2 ~compare_elt =
-      let step state : ((_, _) Either.t, _) Sequence.Step.t =
-        match state with
+      let step (e1, e2) : ((_, _) Either.t, _) Sequence.Step.t =
+        match e1, e2 with
         | Null, Null -> Done
-        | Null, This (More (elt, tree, enum)) ->
-          Yield { value = Second elt; state = Null, cons tree enum }
-        | This (More (elt, tree, enum)), Null ->
-          Yield { value = First elt; state = cons tree enum, Null }
-        | ( (This (More (a1, tree1, enum1)) as left)
-          , (This (More (a2, tree2, enum2)) as right) ) ->
-          let compare_result = compare_elt a1 a2 in
-          if compare_result = 0
-          then (
-            let next_state =
-              if phys_equal tree1 tree2
-              then enum1, enum2
-              else cons tree1 enum1, cons tree2 enum2
-            in
-            Skip { state = next_state })
-          else if compare_result < 0
-          then Yield { value = First a1; state = cons tree1 enum1, right }
-          else Yield { value = Second a2; state = left, cons tree2 enum2 }
+        | Null, This e2 -> Yield { value = Second (elt e2); state = e1, next e2 }
+        | This e1, Null -> Yield { value = First (elt e1); state = next e1, e2 }
+        | This e1, This e2 ->
+          (* Trying to force specialization so we only dispatch on key order once. *)
+          let f which : ((_, _) Either.t, _) Sequence.Step.t =
+            let a1 = elt e1 in
+            let a2 = elt e2 in
+            let #(e1, e2) = next2_drop_phys_equal e1 e2 ~which in
+            let next_state = e1, e2 in
+            match which with
+            | Both -> Skip { state = next_state }
+            | Left -> Yield { value = First a1; state = next_state }
+            | Right -> Yield { value = Second a2; state = next_state }
+          in
+          (match which e1 e2 ~compare_elt with
+           | Left as which -> (f [@inlined]) which
+           | Right as which -> (f [@inlined]) which
+           | Both as which -> (f [@inlined]) which)
       in
       Sequence.unfold_step ~init:(of_set t1, of_set t2) ~f:step
     ;;
@@ -830,8 +900,7 @@ module Tree0 = struct
     let next enum =
       match enum with
       | Null -> Sequence.Step.Done
-      | This (Enum.More (k, t, e)) ->
-        Sequence.Step.Yield { value = k; state = Enum.cons t e }
+      | This e -> Sequence.Step.Yield { value = Enum.elt e; state = Enum.next e }
     in
     let init =
       match from_elt with
@@ -845,8 +914,8 @@ module Tree0 = struct
     let next enum =
       match enum with
       | Null -> Sequence.Step.Done
-      | This (Enum.More (k, t, e)) ->
-        Sequence.Step.Yield { value = k; state = Enum.cons_right t e }
+      | This e ->
+        Sequence.Step.Yield { value = Enum.elt e; state = Enum.next_decreasing e }
     in
     let init =
       match from_elt with
@@ -1445,7 +1514,7 @@ module Accessors = struct
   let rank t v = Tree0.rank t.tree v ~compare_elt:(compare_elt t)
   let remove_index t i = like t (Tree0.remove_index t.tree i ~compare_elt:(compare_elt t))
 
-  let%template[@alloc a = (heap, stack)] sexp_of_t sexp_of_a _ t =
+  let%template[@alloc a = (heap, stack)] sexp_of_t sexp_of_a t =
     (Tree0.sexp_of_t [@alloc a]) sexp_of_a t.tree [@exclave_if_stack a]
   ;;
 
@@ -1483,6 +1552,8 @@ let%template[@mode local] compare _ _ t1 t2 =
 ;;
 
 module Tree = struct
+  module Enum = Tree0.Enum0
+
   type weight = int
 
   type ('a, 'cmp) t = ('a, 'cmp) Tree0.t =
@@ -1580,7 +1651,7 @@ module Tree = struct
   let nth t i = Tree0.nth t i
   let rank ~comparator t v = Tree0.rank t v ~compare_elt:(ce comparator)
   let remove_index ~comparator t i = Tree0.remove_index t i ~compare_elt:(ce comparator)
-  let sexp_of_t sexp_of_a _ t = Tree0.sexp_of_t sexp_of_a t
+  let sexp_of_t sexp_of_a t = Tree0.sexp_of_t sexp_of_a t
   let to_tree t = t
   let of_tree ~comparator:_ t = t
 
@@ -1631,7 +1702,7 @@ module Tree = struct
           ; global_ right : ('a, 'cmp) t
           ; weight : int
           }
-    [@@deriving sexp_of]
+    [@@deriving equal ~localize, sexp_of]
 
     let balance_invariants t = Tree0.balance_invariants t
 
@@ -1805,10 +1876,7 @@ let%template[@alloc a @ m = (heap_global, stack_local)] sexp_of_m__t
   (module Elt : Sexp_of_m with type t = elt[@alloc a])
   t
   =
-  (sexp_of_t [@alloc a])
-    (Elt.sexp_of_t [@alloc a])
-    (fun _ -> Sexp.Atom "_")
-    t [@exclave_if_stack a]
+  (sexp_of_t [@alloc a]) (Elt.sexp_of_t [@alloc a]) t [@exclave_if_stack a]
 ;;
 
 let m__t_of_sexp
@@ -1828,11 +1896,14 @@ let m__t_sexp_grammar (type elt) (module Elt : M_sexp_grammar with type t = elt)
 let compare_m__t (module _ : Compare_m) t1 t2 = compare_direct t1 t2
 let equal_m__t (module _ : Equal_m) t1 t2 = equal t1 t2
 
-let%template compare_m__t__local (module _ : Compare_m) t1 t2 =
+let%template[@mode local] compare_m__t (module _ : Compare_m) t1 t2 =
   (compare_direct [@mode local]) t1 t2
 ;;
 
-let%template equal_m__t__local (module _ : Equal_m) t1 t2 = (equal [@mode local]) t1 t2
+let%template[@mode local] equal_m__t (module _ : Equal_m) t1 t2 =
+  (equal [@mode local]) t1 t2
+;;
+
 let globalize_m__t (module _ : Globalize_m) (local_ t) = globalize0 t
 
 let hash_fold_m__t (type elt) (module Elt : Hash_fold_m with type t = elt) state =
@@ -1874,8 +1945,4 @@ module Poly = struct
   let filter_map a ~f = Using_comparator.filter_map ~comparator a ~f
   let of_tree tree = { comparator; tree }
   let to_tree t = t.tree
-end
-
-module Private = struct
-  module Enum = Tree0.Enum
 end

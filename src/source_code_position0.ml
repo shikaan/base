@@ -28,8 +28,12 @@ let to_string { Stdlib.Lexing.pos_fname; pos_lnum; pos_cnum; pos_bol } =
 ;;
 
 let sexp_of_t t = Sexp.Atom (to_string t)
-let equal__local (local_ a) (local_ b) = equal_int (compare__local a b) 0
-let equal = [%eta2 equal__local]
+
+let%template[@mode local] equal (local_ a) (local_ b) =
+  equal_int ((compare [@mode local]) a b) 0
+;;
+
+let%template equal = [%eta2 equal [@mode local]]
 
 let of_pos (pos_fname, pos_lnum, pos_cnum, _) =
   { pos_fname; pos_lnum; pos_cnum; pos_bol = 0 }
@@ -41,4 +45,4 @@ let here_or_there ~(here : [%call_pos]) there =
   | Some there -> there
 ;;
 
-let is_dummy (local_ t) = equal__local Stdlib.Lexing.dummy_pos t
+let%template is_dummy (local_ t) = (equal [@mode local]) Stdlib.Lexing.dummy_pos t

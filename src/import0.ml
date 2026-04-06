@@ -49,7 +49,8 @@ include (
 
 type ('a : value_or_null) ref = 'a Stdlib.ref = { mutable contents : 'a }
 type ('a : any mod separable) iarray = 'a Basement.Stdlib_iarray_labels.t
-type 'a or_null = 'a Basement.Or_null_shim.t [@@or_null_reexport]
+
+include Basement.Or_null_shim.Export
 
 module Stdlib = struct
   include Stdlib
@@ -240,10 +241,16 @@ let raise : ('a : k). (exn -> 'a @ portable unique) @ portable =
   fun exn ->
   match (raise exn : Nothing0.t) with
   | _ -> .
-[@@kind k = (base_non_value, value & (base, kr1, kr2, kr3), bits32 & bits32)]
+[@@kind
+  k = (base_non_value, value_or_null & (base_or_null, kr1, kr2, kr3), bits32 & bits32)]
 ;;]
 
-external phys_equal : ('a[@local_opt]) -> ('a[@local_opt]) -> bool @@ portable = "%eq"
+external phys_equal
+  : ('a : value_or_null).
+  ('a[@local_opt]) -> ('a[@local_opt]) -> bool
+  @@ portable
+  = "%eq"
+
 external decr : (int ref[@local_opt]) -> unit @@ portable = "%decr"
 external incr : (int ref[@local_opt]) -> unit @@ portable = "%incr"
 

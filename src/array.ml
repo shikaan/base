@@ -11,9 +11,10 @@ include Array
 type ('a : any mod separable) t = 'a array
 
 [%%template
-[@@@kind_set.define base_with_ext = (base, value mod external64)]
+[@@@kind_set.define base_or_null_with_ext = (base_or_null, value_or_null mod external64)]
 
-type%template ('a : k) t = 'a array [@@kind k = (base_non_value, value mod external64)]
+type%template ('a : k) t = 'a array
+[@@kind k = (base_non_value, value_or_null mod external64)]
 
 [%%rederive.portable
   type nonrec ('a : value_or_null mod separable) t = 'a array
@@ -47,14 +48,18 @@ type%template ('a : k) t = 'a array [@@kind k = (base_non_value, value mod exter
    - http://www.sorting-algorithms.com/quick-sort-3-way *)
 
 module%template.portable
-  [@kind k = (value, value mod external64)] [@modality p] Sorter (S : sig
+  [@kind k = base_or_null_with_ext] [@modality p] Sorter (S : sig
+    [@@@kind k = k mod separable]
+
     type ('a : k) t
 
-    val get : local_ 'a t -> int -> 'a
-    val set : local_ 'a t -> int -> 'a -> unit
-    val length : local_ 'a t -> int
+    val get : ('a : k). local_ 'a t -> int -> 'a
+    val set : ('a : k). local_ 'a t -> int -> 'a -> unit
+    val length : ('a : k). local_ 'a t -> int
   end) =
 struct
+  [@@@kind k = k mod separable]
+
   include S
 
   let swap arr i j =
@@ -65,7 +70,8 @@ struct
 
   module type Sort = sig @@ p
     val sort
-      :  local_ 'a t
+      : ('a : k).
+      local_ 'a t
       -> compare:local_ ('a -> 'a -> int)
       -> left:int (* leftmost index of sub-array to sort *)
       -> right:int (* rightmost index of sub-array to sort *)
@@ -148,7 +154,8 @@ struct
     include Sort
 
     val five_element_sort
-      :  local_ 'a t
+      : ('a : k).
+      local_ 'a t
       -> compare:local_ ('a -> 'a -> int)
       -> int
       -> int
@@ -157,7 +164,16 @@ struct
       -> int
       -> unit
   end = struct
-    let five_element_sort arr ~(local_ compare : _ -> _ -> _) m1 m2 m3 m4 m5 =
+    let five_element_sort
+      (type a : k)
+      (arr : a t)
+      ~(local_ compare : _ -> _ -> _)
+      m1
+      m2
+      m3
+      m4
+      m5
+      =
       let compare_and_swap i j =
         if compare (get arr i) (get arr j) > 0 then swap arr i j
       in
@@ -191,7 +207,13 @@ struct
        - eliminate a commonly appearing element by sorting it into the center partition by
          itself To this end we look at the center 3 elements of the 5 and return pairs of
          equal elements or the widest range *)
-    let choose_pivots arr ~(local_ compare : _ -> _ -> _) ~left ~right =
+    let choose_pivots
+      (type a : k)
+      (arr : a t)
+      ~(local_ compare : _ -> _ -> _)
+      ~left
+      ~right
+      =
       let sixth = (right - left) / 6 in
       let m1 = left + sixth in
       let m2 = m1 + sixth in
@@ -209,7 +231,13 @@ struct
       else #(m2_val, m4_val, false)
     ;;
 
-    let dual_pivot_partition arr ~(local_ compare : _ -> _ -> _) ~left ~right =
+    let dual_pivot_partition
+      (type a : k)
+      (arr : a t)
+      ~(local_ compare : _ -> _ -> _)
+      ~left
+      ~right
+      =
       let #(pivot1, pivot2, pivots_equal) = choose_pivots arr ~compare ~left ~right in
       (*=loop invariants:
          1.  left <= l < r <= right
@@ -244,7 +272,16 @@ struct
       #(l, r, pivots_equal)
     ;;
 
-    let rec intro_sort arr ~max_depth ~compare ~left ~right =
+    let rec intro_sort
+      : type (a : k).
+        a t @ local
+        -> max_depth:_
+        -> compare:(a -> a -> int) @ local
+        -> left:_
+        -> right:_
+        -> _
+      =
+      fun (arr : a t) ~max_depth ~compare ~left ~right ->
       let len = right - left + 1 in
       (* This takes care of some edge cases, such as left > right or very short arrays,
          since Insertion_sort.sort handles these cases properly. Thus we don't need to
@@ -261,7 +298,7 @@ struct
         intro_sort arr ~max_depth ~compare ~left:(r + 1) ~right)
     ;;
 
-    let sort arr ~compare ~left ~right =
+    let sort (type a : k) (arr : a t) ~compare ~left ~right =
       let heap_sort_switch_depth =
         (* We bail out to heap sort at a recursion depth of 32. GNU introsort uses 2lg(n).
            The expected recursion depth for perfect 3-way splits is log_3(n).
@@ -284,7 +321,7 @@ struct
     ;;
   end
 
-  let sort ?pos ?len arr ~(local_ compare) =
+  let sort (type a : k) ?pos ?len (arr : a t) ~(local_ compare) =
     let pos, len =
       Ordered_collection_common.get_pos_len_exn () ?pos ?len ~total_length:(length arr)
     in
@@ -293,16 +330,20 @@ struct
 end
 [@@inline]
 
-module%template [@kind k = (value, value mod external64)] Sort =
+module%template [@kind k = base_or_null_with_ext] Sort =
 Sorter [@kind k] [@modality portable] (struct
-    type nonrec ('a : k) t = 'a t
+    type nonrec ('a : k mod separable) t = 'a t
 
     let get = unsafe_get
     let set = unsafe_set
     let length = length
   end)
 
-let sort = Sort.sort
+let sort =
+  let module Sort = Sort [@kind k] in
+  Sort.sort
+[@@kind k = base_or_null_with_ext]
+;;
 
 let%template get_opt arr n : (_ Option.t[@kind k or value_or_null]) =
   if 0 <= n && n < length arr
@@ -311,30 +352,6 @@ let%template get_opt arr n : (_ Option.t[@kind k or value_or_null]) =
     (* SAFETY: bounds checked above *) [@exclave_if_stack a]
   else None
 [@@mode c = (uncontended, shared)] [@@kind k = base] [@@alloc a = (heap, stack)]
-;;
-
-let is_sorted t ~compare =
-  let i = ref (length t - 1) in
-  let result = ref true in
-  while !i > 0 && !result do
-    let elt_i = unsafe_get t !i in
-    let elt_i_minus_1 = unsafe_get t (!i - 1) in
-    if compare elt_i_minus_1 elt_i > 0 then result := false;
-    decr i
-  done;
-  !result
-;;
-
-let is_sorted_strictly t ~compare =
-  let i = ref (length t - 1) in
-  let result = ref true in
-  while !i > 0 && !result do
-    let elt_i = unsafe_get t !i in
-    let elt_i_minus_1 = unsafe_get t (!i - 1) in
-    if compare elt_i_minus_1 elt_i >= 0 then result := false;
-    decr i
-  done;
-  !result
 ;;
 
 let folding_map t ~init ~f =
@@ -363,9 +380,41 @@ let raise_length_mismatch name n1 n2 =
 ;;
 
 [%%template
-let length t = length t [@@kind k = (base_non_value, value mod external64)]
+let length t = length t [@@kind k = (base_non_value, value_or_null mod external64)]
 
-[@@@kind.default k1 = base_with_ext]
+[@@@kind.default k1 = base_or_null_with_ext]
+
+let[@inline] is_sorted_internal (t @ local) ~(in_order @ local) =
+  let n = length t in
+  match n < 2 with
+  | true -> true
+  | false ->
+    (* [exclave_] here allows us to tail-call [loop] below *)
+    exclave_
+    let rec loop next i =
+      let elt = unsafe_get t i in
+      match in_order elt next with
+      | false -> false
+      | true ->
+        let i = i - 1 in
+        (match i >= 0 with
+         | true -> loop elt i
+         | false -> true)
+    in
+    loop (unsafe_get t (n - 1)) (n - 2)
+;;
+
+let is_sorted t ~compare =
+  (is_sorted_internal [@kind k1] [@inlined hint]) t ~in_order:(fun [@inline] x y ->
+    compare x y <= 0)
+  [@nontail]
+;;
+
+let is_sorted_strictly t ~compare =
+  (is_sorted_internal [@kind k1] [@inlined hint]) t ~in_order:(fun [@inline] x y ->
+    compare x y < 0)
+  [@nontail]
+;;
 
 let to_array t = t
 let of_array t = t
@@ -471,11 +520,11 @@ let[@inline always] findi_internal t ~(f @ local) ~if_found ~if_not_found =
       else (if_not_found [@inlined]) ()
     in
     (loop [@inlined]) 0 [@nontail])
-[@@kind k1 = k1, k2 = (value, k1, value & k1)]
+[@@kind k1 = k1, k2 = (value_or_null, k1, value_or_null & k1)]
 ;;
 
 let find t ~(f @ local) =
-  (findi_internal [@inlined] [@kind k1 value])
+  (findi_internal [@inlined] [@kind k1 value_or_null])
     t
     ~f:(fun _ v -> f v)
     ~if_found:(fun ~i:_ ~value : (_ Option.t[@kind k1 or value_or_null]) -> Some value)
@@ -493,28 +542,30 @@ let find_exn t ~(f @ local) =
 ;;
 
 let findi t ~f =
-  (findi_internal [@inlined] [@kind k1 value])
+  (findi_internal [@inlined] [@kind k1 value_or_null])
     t
     ~f
-    ~if_found:(fun ~i ~value : (_ Option.t[@kind value & (k1 or value)]) ->
+    ~if_found:
+      (fun
+        ~i ~value : (_ Option.t[@kind value_or_null & (k1 or value_or_null)]) ->
       Some #(i, value))
     ~if_not_found:(fun () -> None)
 ;;
 
 let findi_exn t ~f =
-  (findi_internal [@inlined] [@kind k1 (value & k1)])
+  (findi_internal [@inlined] [@kind k1 (value_or_null & k1)])
     t
     ~f
     ~if_found:(fun ~i ~value -> #(i, value))
     ~if_not_found:(fun () ->
-      (raise [@kind value & (k1 or value)])
+      (raise [@kind value_or_null & (k1 or value_or_null)])
         (Not_found_s (Atom "Array.findi_exn: not found")))
 ;;
 
 (* The [value] version of this implementation initializes the output only once, based on
    the primitive [caml_array_sub]. Other approaches, like [init] or [map], first
    initialize with a fixed value, then blit from the source. *)
-let copy t = (sub [@kind k1]) t ~pos:0 ~len:(length t)
+let copy t = (unsafe_sub [@kind k1]) t 0 (length t)
 
 let rev_inplace t =
   let i = ref 0 in
@@ -532,7 +583,7 @@ let rev t =
   t
 ;;
 
-let of_list_rev (l : (_ List.Constructors.t[@kind k1 or value_or_null])) =
+let of_list_rev (l : (_ List.Constructors.t[@kind k1 or value_or_null])) : (_ : k1) t =
   match l with
   | [] -> [||]
   | a :: l ->
@@ -552,13 +603,10 @@ let of_list_rev (l : (_ List.Constructors.t[@kind k1 or value_or_null])) =
 
 [%%template
 [@@@kind.default k1 = k1]
-[@@@kind.default k2 = base]
+[@@@kind.default k2 = base_or_null]
 
 let sum (type sum : k2) (module M : Container.Summable with type t = sum[@kind k2]) t ~f =
-  let toplevel_get = Toplevel_value.get [@kind k2] in
-  (fold [@kind k1 k2]) t ~init:((toplevel_get [@inlined]) M.zero) ~f:(fun n a ->
-    M.( + ) n (f a))
-  [@nontail]
+  (fold [@kind k1 k2]) t ~init:M.zero ~f:(fun n a -> M.( + ) n (f a)) [@nontail]
 ;;
 
 let iteri_until t ~f ~finish =
@@ -667,9 +715,9 @@ let foldi t ~init ~f =
   (loop [@inlined]) 0 init [@nontail]
 ;;]
 
-[@@@kind.default k2 = base_with_ext]
+[@@@kind.default k2 = base_or_null_with_ext]
 
-let filter_mapi t ~f =
+let filter_mapi (t : (_ : k1) t) ~f : (_ : k2) t =
   let r = ref [||] in
   let k = ref 0 in
   for i = 0 to length t - 1 do
@@ -684,8 +732,11 @@ let filter_mapi t ~f =
 ;;
 
 let filter_map t ~f = (filter_mapi [@kind k1 k2]) t ~f:(fun _i a -> f a) [@nontail]
-let concat_map t ~f = (concat [@kind k2]) (to_list ((map [@kind k1 value]) ~f t))
-let concat_mapi t ~f = (concat [@kind k2]) (to_list ((mapi [@kind k1 value]) ~f t))
+let concat_map t ~f = (concat [@kind k2]) (to_list ((map [@kind k1 value_or_null]) ~f t))
+
+let concat_mapi t ~f =
+  (concat [@kind k2]) (to_list ((mapi [@kind k1 value_or_null]) ~f t))
+;;
 
 let check_length2_exn name t1 t2 =
   let n1 = length t1 in
@@ -695,7 +746,7 @@ let check_length2_exn name t1 t2 =
 
 (* [of_list_map] and [of_list_rev_map] are based on functions from the OCaml distribution. *)
 
-let of_list_map (xs : (_ List.Constructors.t[@kind k1 or value_or_null])) ~f =
+let of_list_map (xs : (_ List.Constructors.t[@kind k1 or value_or_null])) ~f : (_ : k2) t =
   match xs with
   | [] -> [||]
   | hd :: tl ->
@@ -713,7 +764,8 @@ let of_list_map (xs : (_ List.Constructors.t[@kind k1 or value_or_null])) ~f =
     fill 1 tl [@nontail]
 ;;
 
-let of_list_mapi (xs : (_ List.Constructors.t[@kind k1 or value_or_null])) ~f =
+let of_list_mapi (xs : (_ List.Constructors.t[@kind k1 or value_or_null])) ~f : (_ : k2) t
+  =
   match xs with
   | [] -> [||]
   | hd :: tl ->
@@ -761,7 +813,7 @@ let equal = (equal_array [@kind k] [@mode m])
 let compare = (compare_array [@kind k] [@mode m])]
 
 [%%template
-[@@@kind.default k1 = base_with_ext]
+[@@@kind.default k1 = base_or_null_with_ext]
 
 let filter t ~f =
   (filter_map [@kind k1 k1]) t ~f:(fun x -> if f x then Some x else None) [@nontail]
@@ -772,7 +824,7 @@ let filteri t ~f =
 ;;
 
 [%%template
-[@@@kind.default k1 = k1, k2 = base, k3 = base]
+[@@@kind.default k1 = k1, k2 = base_or_null, k3 = base_or_null]
 
 let foldi_until t ~init ~f ~finish =
   let length = length t in
@@ -799,7 +851,7 @@ let fold_until t ~init ~f ~finish =
     ~finish:(fun _i acc -> finish acc) [@nontail]
 ;;]
 
-[@@@kind.default k2 = base_with_ext]
+[@@@kind.default k2 = base_or_null_with_ext]
 
 let of_list_rev_map xs ~f =
   let t = (of_list_map [@kind k1 k2]) xs ~f in
@@ -813,19 +865,19 @@ let of_list_rev_mapi xs ~f =
   t
 ;;
 
-[@@@kind.default k3 = base_with_ext]
+[@@@kind.default k3 = base_or_null_with_ext]
 
 let partition_mapi t ~f =
   let (both : (_ Either0.t[@kind (k2 or value_or_null) (k3 or value_or_null)]) t) =
-    (mapi [@kind k1 value]) t ~f
+    (mapi [@kind k1 value_or_null]) t ~f
   in
   let firsts =
-    (filter_map [@kind value k2]) both ~f:(function
+    (filter_map [@kind value_or_null k2]) both ~f:(function
       | First x -> (Some x : (_ Option.t[@kind k2 or value_or_null]))
       | Second _ -> None)
   in
   let seconds =
-    (filter_map [@kind value k3]) both ~f:(function
+    (filter_map [@kind value_or_null k3]) both ~f:(function
       | First _ -> (None : (_ Option.t[@kind k3 or value_or_null]))
       | Second x -> Some x)
   in
@@ -837,7 +889,7 @@ let partition_map t ~f =
 ;;]
 
 [%%template
-[@@@kind.default k = base_with_ext]
+[@@@kind.default k = base_or_null_with_ext]
 
 let partitioni_tf t ~f =
   (partition_mapi [@kind k k k]) t ~f:(fun i x -> if f i x then First x else Second x)
@@ -870,7 +922,7 @@ let sexp_of_t (sexp_of_elt : _ @ m -> Sexp0.t @ m) (t @ m) : Sexp0.t =
   let t_of_sexp elt_of_sexp (sexp : Sexp0.t) =
     match sexp with
     | List [] -> [||]
-    | List (_ :: _ as l) -> (of_list_map [@kind value k]) l ~f:elt_of_sexp
+    | List (_ :: _ as l) -> (of_list_map [@kind value_or_null k]) l ~f:elt_of_sexp
     | Atom _ -> of_sexp_error "array_of_sexp: list needed" sexp
   [@@kind k = base_non_value]
   ;;]
@@ -889,17 +941,17 @@ let findi_exn t ~f =
   i, value
 ;;
 
-let merge a1 a2 ~compare =
+let merge (type a : k mod separable) (a1 : a t) a2 ~compare =
   let l1 = Array.length a1 in
   let l2 = Array.length a2 in
   if l1 = 0
-  then copy a2
+  then (copy [@kind k]) a2
   else if l2 = 0
-  then copy a1
+  then (copy [@kind k]) a1
   else if compare (unsafe_get a2 0) (unsafe_get a1 (l1 - 1)) >= 0
-  then append a1 a2
+  then (append [@kind k]) a1 a2
   else if compare (unsafe_get a1 0) (unsafe_get a2 (l2 - 1)) > 0
-  then append a2 a1
+  then (append [@kind k]) a2 a1
   else (
     let len = l1 + l2 in
     let merged = create ~len (unsafe_get a1 0) in
@@ -922,6 +974,7 @@ let merge a1 a2 ~compare =
         a2_index := !a2_index + 1)
     done;
     merged)
+[@@kind k = base_or_null_with_ext]
 ;;
 
 let copy_matrix tt = map ~f:copy tt
@@ -1117,7 +1170,7 @@ let transpose_exn tt =
 
 [@@@warning "-incompatible-with-upstream"]
 
-let%template[@kind k1 = base_with_ext, k2 = base_with_ext] map t ~f =
+let%template[@kind k1 = base_or_null_with_ext, k2 = base_or_null_with_ext] map t ~f =
   (map [@kind k1 k2]) t ~f
 ;;
 
@@ -1173,9 +1226,9 @@ let sub t ~pos ~len = sub t ~pos ~len
 let invariant invariant_a t = iter t ~f:invariant_a
 
 module Private = struct
-  module%template [@kind k = (value, value mod external64)] Sort = Sort [@kind k]
+  module%template [@kind k = base_or_null_with_ext] Sort = Sort [@kind k]
 
-  module%template.portable [@kind k = (value, value mod external64)] [@modality p] Sorter =
+  module%template.portable [@kind k = base_or_null_with_ext] [@modality p] Sorter =
     Sorter
     [@kind k]
     [@modality p]

@@ -7,7 +7,7 @@ module Definitions = struct
     | Immediate
     | Stack
     | Heap
-  [@@deriving sexp ~stackify, compare]
+  [@@deriving sexp ~stackify, compare ~localize]
 
   type uniform_or_mixed =
     | Immediate
@@ -138,12 +138,13 @@ module type Obj = sig @@ portable
   external%template magic
     : ('a : any) ('b : any).
     ('a[@local_opt]) @ c o p u -> ('b[@local_opt]) @ c o p u
+    @@ stateless
     = "%obj_magic"
   [@@layout_poly]
   [@@mode
-    c = (uncontended, shared, contended)
+    c = (uncontended, shared, contended, read, immutable)
     , o = (many, once)
-    , p = (nonportable, portable)
+    , p = (nonportable, shareable, portable, observing, stateless)
     , u = (aliased, unique)]
 
   external%template magic_portable
@@ -151,14 +152,20 @@ module type Obj = sig @@ portable
     ('a[@local_opt]) @ c o u -> ('a[@local_opt]) @ c o portable u
     = "%identity"
   [@@layout_poly]
-  [@@mode c = (uncontended, shared, contended), o = (many, once), u = (aliased, unique)]
+  [@@mode
+    c = (uncontended, shared, contended, read, immutable)
+    , o = (many, once)
+    , u = (aliased, unique)]
 
   external%template magic_uncontended
     : ('a : any).
     ('a[@local_opt]) @ contended o p u -> ('a[@local_opt]) @ o p u
     = "%identity"
   [@@layout_poly]
-  [@@mode o = (many, once), p = (nonportable, portable), u = (aliased, unique)]
+  [@@mode
+    o = (many, once)
+    , p = (nonportable, shareable, portable, observing, stateless)
+    , u = (aliased, unique)]
 
   external%template magic_many
     : ('a : any).
@@ -170,9 +177,22 @@ module type Obj = sig @@ portable
     , p = (nonportable, portable)
     , u = (aliased, unique)]
 
+  external%template magic_unyielding
+    : ('a : any).
+    'a @ c local o p u yielding -> 'a @ c local o p u unyielding
+    @@ stateless
+    = "%identity"
+  [@@layout_poly]
+  [@@mode
+    c = (uncontended, shared, contended)
+    , o = (many, once)
+    , p = (nonportable, portable)
+    , u = (aliased, unique)]
+
   external%template magic_unique
     : ('a : any).
     ('a[@local_opt]) @ c o p -> ('a[@local_opt]) @ c o p unique
+    @@ stateless
     = "%identity"
   [@@layout_poly]
   [@@mode

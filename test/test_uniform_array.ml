@@ -384,7 +384,8 @@ let%expect_test "or_null elements" =
 module%test [@tags "no-js"] _ : module type of struct
   include Uniform_array
 end = struct
-  type ('a : value_or_null) t = 'a Uniform_array.t [@@deriving compare ~localize, sexp_of]
+  type ('a : value_or_null) t = 'a Uniform_array.t
+  [@@deriving compare ~localize, sexp_of ~stackify]
 
   let t_sexp_grammar = Uniform_array.t_sexp_grammar
   let invariant = Uniform_array.invariant

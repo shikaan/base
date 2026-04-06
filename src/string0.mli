@@ -44,12 +44,11 @@ val make : int -> char -> string @ m
 val concat : ?sep:string -> string list @ local -> string @ m
 val append : string @ local -> string @ local -> string @ m
 val lowercase : string @ m -> string @ m
-val uppercase : string @ m -> string @ m]
+val uppercase : string @ m -> string @ m
+val split_lines : string @ m -> string list @ m]
 
 val%template iter : string @ m -> f:(char -> unit) @ local -> unit
 [@@mode m = (global, local)]
-
-val split_lines : string -> string list
 
 val unsafe_blits
   :  dst:bytes @ local

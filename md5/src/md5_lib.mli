@@ -15,8 +15,8 @@ val of_binary_exn : string -> t
 (** assumes the input is 16 bytes without checking *)
 val unsafe_of_binary : string -> t
 
-val unsafe_of_binary_local : local_ string -> local_ t
-val unsafe_of_binary__local : local_ string -> local_ t
+val unsafe_of_binary_local : local_ string -> local_ t [@@zero_alloc]
+val unsafe_of_binary__local : local_ string -> local_ t [@@zero_alloc]
 val globalize : local_ t -> t
 val to_hex : t -> string
 val of_hex_exn : string -> t

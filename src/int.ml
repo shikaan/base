@@ -4,17 +4,24 @@ include Int_intf.Definitions
 include Int0
 
 module T = struct
-  type t = int [@@deriving globalize, hash, sexp ~stackify, sexp_grammar]
+  module T0 = struct
+    type t = int [@@deriving globalize, hash, of_sexp, sexp_grammar]
 
-  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
+    let%template[@alloc a = (heap, stack)] to_string =
+      (Integer_to_string.int_to_string [@alloc a])
+    ;;
+  end
+
+  include T0
+  include Int_string_conversions.Make (T0)
+
   let compare x y = Int_replace_polymorphic_compare.compare x y
+  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
 
   let of_string s =
     try of_string s with
     | _ -> Printf.failwithf "Int.of_string: %S" (globalize_string s) ()
   ;;
-
-  let to_string = to_string
 end
 
 let num_bits = Int_conversions.num_bits_int

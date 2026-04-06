@@ -13,6 +13,12 @@ module W : sig @@ portable
 
   include%template Comparator.S [@modality portable] with type t := t
 
+  [%%template:
+  [@@@alloc.default a @ m = (heap_global, stack_local)]
+
+  val to_string : t @ local -> string @ m
+  val to_string_hum : ?delimiter:char -> t @ local -> string @ m]
+
   val wrap_exn : local_ int64 -> local_ t
   val wrap_modulo : local_ int64 -> t
   val unwrap : local_ t -> local_ int64
@@ -47,8 +53,10 @@ module W : sig @@ portable
   val of_int64_exn : local_ int64 -> local_ t
   val of_int64_trunc : local_ int64 -> t
   val compare : t -> t -> int
-  val compare__local : local_ t -> local_ t -> int
-  val equal__local : local_ t -> local_ t -> bool
+
+  val%template compare : local_ t -> local_ t -> int [@@mode local]
+  val%template equal : local_ t -> local_ t -> bool [@@mode local]
+
   val ceil_pow2 : local_ t -> t
   val floor_pow2 : local_ t -> t
   val ceil_log2 : local_ t -> t
@@ -58,7 +66,19 @@ module W : sig @@ portable
   val ctz : local_ t -> t
 end = struct
   module T = struct
-    type t = int64 [@@deriving compare ~localize, globalize, hash, sexp_of, sexp_grammar]
+    module T0 = struct
+      type t = int64 [@@deriving compare ~localize, globalize, hash, sexp_grammar]
+
+      let unwrap x = exclave_ Stdlib.Int64.shift_right x 1
+
+      let%template[@alloc a = (heap, stack)] to_string x =
+        (Integer_to_string.int64_to_string [@alloc a])
+          (unwrap x) [@nontail] [@exclave_if_stack a]
+      ;;
+    end
+
+    include T0
+    include Int_string_conversions.Make (T0)
   end
 
   include T
@@ -78,7 +98,6 @@ end = struct
   ;;
 
   let wrap_modulo x = Stdlib.Int64.mul (globalize x) 2L
-  let unwrap x = exclave_ Stdlib.Int64.shift_right x 1
   let unwrap_unsigned x = Stdlib.Int64.shift_right_logical (globalize x) 1
 
   (* This does not use wrap or unwrap to avoid generating exceptions in the case of
@@ -117,11 +136,9 @@ end = struct
   let of_int64_exn = wrap_exn
   let of_int64_trunc t = wrap_modulo t
   let t_of_sexp x = globalize (wrap_exn (int64_of_sexp x)) [@nontail]
-  let sexp_of_t x = sexp_of_int64 (globalize_int64 (unwrap x))
-  let sexp_of_t__stack x = exclave_ sexp_of_int64__stack (unwrap x)
   let compare (x : t) y = compare x y
-  let compare__local (x : t) y = compare__local x y
-  let equal__local (x : t) y = equal__local x y
+  let%template[@mode local] compare (x : t) y = (compare [@mode local]) x y
+  let%template[@mode local] equal (x : t) y = (equal [@mode local]) x y
   let is_pow2 x = Int64.is_pow2 (unwrap x) [@nontail]
 
   let clz x =
@@ -145,9 +162,15 @@ module T = struct
 
   let comparator = W.comparator
   let compare = W.compare
-  let compare__local = W.compare__local
-  let equal__local = W.equal__local
+  let%template[@mode local] compare = (W.compare [@mode local])
+  let%template[@mode local] equal = (W.equal [@mode local])
   let invariant = W.invariant
+
+  [%%template
+  [@@@alloc.default a = (heap, stack)]
+
+  let to_string = (W.to_string [@alloc a])
+  let to_string_hum = (W.to_string_hum [@alloc a])]
 
   (* We don't expect [hash] to follow the behavior of int in 64bit architecture *)
   let _ = hash
@@ -194,8 +217,6 @@ module T = struct
       | _ -> sign, true)
     else sign, true
   ;;
-
-  let to_string x = Integer_to_string.int64_to_string (unwrap x) [@nontail]
 
   let of_string_raw str =
     let sign, signedness = sign_and_signedness str in
@@ -341,8 +362,6 @@ let to_local_nativeint_exn x = exclave_ Conv.int64_to_nativeint_exn (unwrap x)
 let to_nativeint_exn x = globalize_nativeint (to_local_nativeint_exn x) [@nontail]
 let to_nativeint_trunc x = Conv.int64_to_nativeint_trunc (unwrap x)
 let num_bits = of_int_exn num_bits
-
-include Int_string_conversions.Make (T)
 
 include Int_string_conversions.Make_hex (struct
     type t = T.t [@@deriving compare ~localize, hash]

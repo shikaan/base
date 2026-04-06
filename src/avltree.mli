@@ -70,11 +70,11 @@ type ('k : k, 'v : v) t := (('k, 'v) t[@kind k v])
 [@@@kind.default k v]
 
 val empty : ('k, 'v) t
-val get_empty : unit -> ('k, 'v) t
-val is_empty : _ t @ contended -> bool
+val get_empty : ('k : k) ('v : v). unit -> ('k, 'v) t
+val is_empty : ('k : k) ('v : v). ('k, 'v) t @ contended -> bool
 
 (** Checks invariants, raising an exception if any invariants fail. *)
-val invariant : ('k, 'v) t -> compare:('k -> 'k -> int) -> unit
+val invariant : ('k : k) ('v : v). ('k, 'v) t -> compare:('k -> 'k -> int) -> unit
 
 (** Adds the specified key and data to the tree destructively (previous [t]'s are no
     longer valid) using the specified comparison function. O(log(N)) time, O(1) space.
@@ -88,7 +88,8 @@ val invariant : ('k, 'v) t -> compare:('k -> 'k -> int) -> unit
     [key]. If [replace] is false, and there is an existing mapping for key, then [add] has
     no effect. *)
 val add
-  :  ('k, 'v) t
+  : ('k : k) ('v : v).
+  ('k, 'v) t
   -> replace:bool
   -> compare:local_ ('k -> 'k -> int)
   -> added:local_ bool ref
@@ -197,7 +198,8 @@ val mem
     Previous root nodes are not usable anymore; do so at your peril. The [removed] ref
     will be set to true if a node was actually removed, and false otherwise. *)
 val remove
-  :  ('k, 'v) t
+  : ('k : k) ('v : v).
+  ('k, 'v) t
   -> removed:local_ bool ref
   -> compare:local_ ('k -> 'k -> int)
   -> 'k
@@ -219,6 +221,9 @@ val iter
 [@@mode c = (uncontended, shared)]
 
 (** Map over the tree, changing the data in place. *)
-val mapi_inplace : ('k, 'v) t -> f:local_ (key:'k -> data:'v -> 'v) -> unit
+val mapi_inplace
+  : ('k : k) ('v : v).
+  ('k, 'v) t -> f:local_ (key:'k -> data:'v -> 'v) -> unit
 
-val choose_exn : ('k, 'v) t @ c -> #('k * 'v) @ c [@@mode c = (uncontended, shared)]]
+val choose_exn : ('k : k) ('v : v). ('k, 'v) t @ c -> #('k * 'v) @ c
+[@@mode c = (uncontended, shared)]]

@@ -664,6 +664,25 @@ let concat_map s ~f = bind s ~f
 let concat s = concat_map s ~f:Fn.id
 let concat_mapi s ~f = concat_map (mapi s ~f:(fun i s -> i, s)) ~f:(fun (i, s) -> f i s)
 
+let concat_list list =
+  match list with
+  | [] -> get_empty ()
+  | [ sequence ] -> sequence
+  | _ :: _ ->
+    Sequence
+      { state = list
+      ; next =
+          (function
+            | Sequence { state; next } :: rest ->
+              (match next state with
+               | Done -> Skip { state = rest }
+               | Skip { state } -> Skip { state = Sequence { state; next } :: rest }
+               | Yield { value; state } ->
+                 Yield { value; state = Sequence { state; next } :: rest })
+            | [] -> Done)
+      }
+;;
+
 let zip (Sequence { state = s1; next = next1 }) (Sequence { state = s2; next = next2 }) =
   let next = function
     | Yield { value = a; state = s1 }, Yield { value = b; state = s2 } ->
@@ -1098,8 +1117,8 @@ let compare compare_a (Sequence l) (Sequence r) =
   loop compare_a l.state l.next r.state r.next
 ;;
 
-let compare__local compare_a__local t1 t2 =
-  compare (fun x y -> compare_a__local x y) (globalize () t1) (globalize () t2)
+let%template[@mode local] compare compare_a t1 t2 =
+  compare (fun x y -> compare_a x y) (globalize () t1) (globalize () t2)
 ;;
 
 let equal equal_a t1 t2 =
@@ -1108,8 +1127,8 @@ let equal equal_a t1 t2 =
     | `Left _ | `Right _ -> false)
 ;;
 
-let equal__local equal_a__local t1 t2 =
-  equal (fun x y -> equal_a__local x y) (globalize () t1) (globalize () t2)
+let%template[@mode local] equal equal_a t1 t2 =
+  equal (fun x y -> equal_a x y) (globalize () t1) (globalize () t2)
 ;;
 
 let round_robin list =

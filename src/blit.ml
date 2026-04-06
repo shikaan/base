@@ -10,22 +10,28 @@ module%template.portable Make1_phantom2_distinct
     (Src : sig
        type ('elt : k, 'p1, 'p2) t
 
-       val length : (_, _, _) t @ local v -> int
+       val length : ('elt : k) 'p1 'p2. ('elt, 'p1, 'p2) t @ local v -> int
      end)
     (Dst : sig
        type ('elt : k, 'p1, 'p2) t
 
-       val length : (_, _, _) t @ local -> int
-       val create_like : len:int -> ('elt, _, _) Src.t @ local v -> ('elt, _, _) t
-       val unsafe_blit : ((('elt, _, _) Src.t, ('elt, _, _) t) blit[@mode v])
+       val length : ('elt : k) 'p1 'p2. ('elt, 'p1, 'p2) t @ local -> int
+
+       val create_like
+         : ('elt : k) 'p1 'p2 'p3 'p4.
+         len:int -> ('elt, 'p1, 'p2) Src.t @ local v -> ('elt, 'p3, 'p4) t
+
+       val unsafe_blit
+         : ('elt : k) 'p1 'p2 'p3 'p4.
+         ((('elt, 'p1, 'p2) Src.t, ('elt, 'p3, 'p4) t) blit[@mode v])
      end) :
   S1_phantom2_distinct
-  [@kind k] [@mode v]
-  with type ('elt, 'p1, 'p2) src := ('elt, 'p1, 'p2) Src.t
-  with type ('elt, 'p1, 'p2) dst := ('elt, 'p1, 'p2) Dst.t = struct
+  [@kind.explicit k] [@mode v]
+  with type ('elt : k, 'p1, 'p2) src := ('elt, 'p1, 'p2) Src.t
+  with type ('elt : k, 'p1, 'p2) dst := ('elt, 'p1, 'p2) Dst.t = struct
   let unsafe_blit = Dst.unsafe_blit
 
-  let blit ~src ~src_pos ~dst ~dst_pos ~len =
+  let blit (type a : k) ~(src : (a, _, _) Src.t) ~src_pos ~dst ~dst_pos ~len =
     Ordered_collection_common.check_pos_len_exn
       ~pos:src_pos
       ~len
@@ -67,9 +73,19 @@ module%template.portable Make1_phantom2_distinct
          | None -> Src.length src - pos)
   ;;
 end
-[@@kind k = (value, value mod external64)]
+[@@kind.explicit k = (value, value mod external64, value_or_null)]
 
-module%template.portable [@modality p] Make1 (Sequence : Sequence1 [@kind k] [@mode v]) =
+module Make1_phantom2_distinct =
+  Make1_phantom2_distinct
+  [@kind.explicit value]
+  [@mode v]
+  [@modality p]
+[@@kind value] [@@modality p = (nonportable, portable)]
+
+module%template.portable
+  [@modality p] Make1
+    (Sequence : Sequence1
+  [@kind.explicit k] [@mode v]) =
 struct
   module Seq = struct
     include Sequence
@@ -77,9 +93,12 @@ struct
     type ('a : k, _, _) t = 'a Sequence.t
   end
 
-  include Make1_phantom2_distinct [@kind k] [@modality p] [@mode v] (Seq) (Seq)
+  include Make1_phantom2_distinct [@kind.explicit k] [@modality p] [@mode v] (Seq) (Seq)
 end
-[@@kind k = (value, value mod external64)]
+[@@kind.explicit k = (value, value mod external64, value_or_null)]
+
+module Make1 = Make1 [@kind.explicit value] [@mode v] [@modality p]
+[@@kind value] [@@modality p = (nonportable, portable)]
 
 module%template.portable
   [@modality p] Make (Sequence : sig

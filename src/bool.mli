@@ -27,3 +27,9 @@ module Non_short_circuiting : sig
   val ( && ) : t -> t -> t [@@zero_alloc]
   val ( || ) : t -> t -> t [@@zero_alloc]
 end
+
+(** [Branch_free] aliases the [Non_short_circuiting] module to make it more readable in
+    code if you want to avoid branching because you want to have both sides of the infix
+    operator execute (implied by using [Non_short_circuiting]) or because you just want to
+    avoid the branch (implied by using [Branch_free]) *)
+module Branch_free : module type of Non_short_circuiting

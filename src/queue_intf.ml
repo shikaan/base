@@ -103,7 +103,7 @@ module type Queue = sig @@ portable
       Also see {!Linked_queue}, which has different performance characteristics. *)
 
   type 'a t : mutable_data with 'a
-  [@@deriving compare ~localize, equal ~localize, globalize]
+  [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify]
 
   include S with type 'a t := 'a t
   include Invariant.S1 with type 'a t := 'a t

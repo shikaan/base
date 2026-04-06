@@ -12,4 +12,4 @@ type t = Sexplib0.Sexp.t =
 let t_sexp_grammar = Sexplib0.Sexp_conv.sexp_t_sexp_grammar
 let of_string = ()
 let invariant (_ : t) = ()
-let equal__local a b = compare__local a b = 0
+let%template[@mode local] equal a b = (compare [@mode local]) a b = 0

@@ -4,23 +4,28 @@ open! Import
 
 [%%template
   type nonrec ('a : k) t = (('a, Error.t) Result.t[@kind k])
-  [@@deriving compare ~localize, equal ~localize, globalize, sexp]
+  [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify]
   [@@kind k = base_non_value]]
 
 type nonrec ('a : value_or_null) t = ('a, Error.t) Result.t
-[@@deriving compare ~localize, equal ~localize, globalize, hash, sexp, sexp_grammar]
+[@@deriving
+  compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
 
 let ( >>= ) = Result.( >>= )
 let ( >>| ) = Result.( >>| )
-let bind = Result.bind
 let ignore_m = Result.ignore_m
 let join = Result.join
 
-let%template map = (Result.map [@kind ki ko])
-[@@kind ki = base_or_null, ko = base_or_null]
-;;
+[%%template
+[@@@mode.default m = (global, local)]
+[@@@kind ko = base_or_null]
 
-let return = Result.return
+let[@kind ko] return a = (Result.return [@kind ko] [@mode m]) a [@exclave_if_local m]
+
+[@@@kind.default ki = base_or_null, ko = ko]
+
+let bind = (Result.bind [@kind ki ko] [@mode m])
+let map = (Result.map [@kind ki ko] [@mode m])]
 
 module Monad_infix = Result.Monad_infix
 
@@ -112,9 +117,13 @@ let%template error ?here ?strict message a sexp_of_a =
 [@@mode m = (portable, nonportable)]
 ;;
 
-let error_s sexp = Error (Error.create_s sexp)
-let error_string message = Error (Error.of_string message)
-let errorf format = Printf.ksprintf error_string format
+[%%template
+[@@@kind.default k = base_or_null]
+
+let error_s sexp : (_ t[@kind k]) = Error (Error.create_s sexp)
+let error_string message : (_ t[@kind k]) = Error (Error.of_string message)
+let errorf format = Printf.ksprintf (error_string [@kind k]) format]
+
 let errorf_portable format = Printf.ksprintf (fun string () -> error_string string) format
 
 let%template tag t ~tag =
@@ -131,6 +140,7 @@ let%template tag_s t ~tag =
 [@@mode p = (portable, nonportable)]
 ;;
 
+let tag_lazy t ~tag = Result.map_error t ~f:(Error.tag_lazy ~tag)
 let tag_s_lazy t ~tag = Result.map_error t ~f:(Error.tag_s_lazy ~tag)
 
 let tag_arg t message a sexp_of_a =
@@ -210,7 +220,7 @@ let filter_ok_at_least_one l =
   match l with
   | [] -> error_string "filter_ok_at_least_one called on empty list"
   | l ->
-    let ok, errs = List.partition_map l ~f:Result.to_either in
+    let ok, errs = List.partition_result l in
     (match ok with
      | [] -> Error (Error.of_list errs)
      | _ -> Ok ok)

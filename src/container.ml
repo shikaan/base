@@ -78,7 +78,7 @@ module%template [@kind.explicit k = (value, value_or_null)] Derived : Derived
     let[@inline] sum_alloc
       (type a : k)
       ~fold
-      (module M : Summable with type t = a[@kind.explicit k] [@mode mo])
+      (module M : Summable with type t = a[@kind.explicit k or value_or_null] [@mode mo])
       t
       ~f
       =

@@ -26,8 +26,8 @@ val from_fun
   : ('a : value_or_null).
   (unit -> 'a @ contended portable) @ once portable -> 'a t
 
-(** [from_fun_fixed f] returns a suspension of the [{ifix-point}] function [f], which
-    takes the lazy value itself as an argument. This can be used in places where one might
+(** [from_fun_fixed f] returns a suspension of the {i fix-point} function [f], which takes
+    the lazy value itself as an argument. This can be used in places where one might
     normally use [let rec] to make a [lazy_t] that refers to itself. *)
 val from_fun_fixed
   : ('a : value_or_null).
@@ -38,11 +38,8 @@ val from_fun_fixed
     threads force the same lazy simultaneously, only one will execute the computation, and
     the rest will block until the computation has finished executing.
 
-    If the suspension raises an exception, that exception will be converted to a string
-    (to guarantee that it's safe to share between threads) and [force] will raise an
-    exception. The raised exception is intentionally opaque and cannot be matched on in
-    order to preserve forward compatibility; if you want the suspension to possibly return
-    an exception, use [Result.t] or another similar type.
+    If the suspension raises an exception, the call to [force] and all subsequent calls to
+    [force] on the same suspension will raise that exception.
 
     Note that unlike the [lazy] in the standard library, [Portable_lazy] does {i not}
     raise an error if a lazy calls [force] from within its own suspension - instead, this

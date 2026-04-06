@@ -4,13 +4,13 @@ include Obj_intf.Definitions
 external%template magic
   : ('a : any) ('b : any).
   ('a[@local_opt]) @ c o p u -> ('b[@local_opt]) @ c o p u
-  @@ portable
+  @@ stateless
   = "%obj_magic"
 [@@layout_poly]
 [@@mode
-  c = (uncontended, shared, contended)
+  c = (uncontended, shared, contended, read, immutable)
   , o = (many, once)
-  , p = (nonportable, portable)
+  , p = (nonportable, shareable, portable, observing, stateless)
   , u = (aliased, unique)]
 
 external%template magic_portable
@@ -19,7 +19,10 @@ external%template magic_portable
   @@ portable
   = "%identity"
 [@@layout_poly]
-[@@mode c = (uncontended, shared, contended), o = (many, once), u = (aliased, unique)]
+[@@mode
+  c = (uncontended, shared, contended, read, immutable)
+  , o = (many, once)
+  , u = (aliased, unique)]
 
 external%template magic_uncontended
   : ('a : any).
@@ -27,7 +30,10 @@ external%template magic_uncontended
   @@ portable
   = "%identity"
 [@@layout_poly]
-[@@mode o = (many, once), p = (nonportable, portable), u = (aliased, unique)]
+[@@mode
+  o = (many, once)
+  , p = (nonportable, shareable, portable, observing, stateless)
+  , u = (aliased, unique)]
 
 external%template magic_many
   : ('a : any).
@@ -38,10 +44,22 @@ external%template magic_many
 [@@mode
   c = (uncontended, shared, contended), p = (nonportable, portable), u = (aliased, unique)]
 
+external%template magic_unyielding
+  : ('a : any).
+  'a @ c local o p u yielding -> 'a @ c local o p u unyielding
+  @@ stateless
+  = "%identity"
+[@@layout_poly]
+[@@mode
+  c = (uncontended, shared, contended)
+  , o = (many, once)
+  , p = (nonportable, portable)
+  , u = (aliased, unique)]
+
 external%template magic_unique
   : ('a : any).
   ('a[@local_opt]) @ c o p -> ('a[@local_opt]) @ c o p unique
-  @@ portable
+  @@ stateless
   = "%identity"
 [@@layout_poly]
 [@@mode
@@ -153,7 +171,7 @@ struct
            field i [@exclave_if_local m]
          ;;
        ]} *)
-    let[@inline always] field__local t i = exclave_ field (Sys.opaque_identity t) i
+    let[@inline always] [@mode local] field t i = exclave_ field (Sys.opaque_identity t) i
     let[@inline always] field t i = field (Sys.opaque_identity t) i
 
     external set_field

@@ -8,11 +8,11 @@ module Definitions = struct
 
       @canonical Base.Hashable.Key *)
   module type%template
-    [@kind k = (value, float64, bits64)] [@modality p = (portable, nonportable)] Key = sig
+    [@modality p = (portable, nonportable)] [@mode m = (local, global)] Key = sig
     @@ p
-    type t : k [@@deriving sexp_of]
+    type t : any [@@deriving sexp_of]
 
-    val compare : [%compare: t]
+    val compare : ([%compare: t][@mode.explicit m]) [@@mode m = (global, m)]
 
     (** Values returned by [hash] must be non-negative. An exception will be raised in the
         case that [hash] returns a negative value. *)
@@ -34,13 +34,15 @@ module type Hashable = sig @@ portable
   val equal : 'a t -> 'a t -> bool
   val poly : 'a t
 
-  val%template of_key : ((module Key with type t = 'a)[@kind k] [@modality p]) -> 'a t @ p
-  [@@kind k = (value, float64, bits64)] [@@modality p = (portable, nonportable)]
+  val%template of_key
+    : ('a : any).
+    ((module Key with type t = 'a)[@modality p]) @ immutable -> 'a t @ p
+  [@@modality p = (portable, nonportable)]
 
   val%template to_key
-    :  'a t @ p
-    -> ((module Key with type t = 'a)[@kind k] [@modality p]) @ p
-  [@@kind k = (value, float64, bits64)] [@@modality p = (portable, nonportable)]
+    : ('a : any).
+    'a t @ p -> ((module Key with type t = 'a)[@modality p]) @ p
+  [@@modality p = (portable, nonportable)]
 
   val hash_param : int -> int -> 'a -> int
   val hash : 'a -> int

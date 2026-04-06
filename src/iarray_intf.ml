@@ -33,6 +33,30 @@ module Definitions = struct
     include%template
       Indexed_container.S1_with_creators [@alloc stack] with type 'a t := 'a t
 
+    val%template map
+      : ('a : ki mod separable) ('b : ko mod separable).
+      'a t @ mi -> f:('a @ mi -> 'b @ mo) @ local -> 'b t @ mo
+    [@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
+    [@@mode mi = (global, local)]
+    [@@alloc a @ mo = (heap_global, stack_local)]
+
+    val%template mapi
+      : ('a : ki mod separable) ('b : ko mod separable).
+      'a t @ mi -> f:(int -> 'a @ mi -> 'b @ mo) @ local -> 'b t @ mo
+    [@@kind ki = value_or_null, ko = value_or_null]
+    [@@mode mi = (global, local)]
+    [@@alloc a @ mo = (heap_global, stack_local)]
+
+    val%template iteri
+      : ('a : ki mod separable).
+      'a t @ mi -> f:(int -> 'a @ mi -> unit) @ local -> unit
+    [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
+    val%template iter
+      : ('a : ki mod separable).
+      'a t @ mi -> f:('a @ mi -> unit) @ local -> unit
+    [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
     include Invariant.S1 with type 'a t := 'a t
 
     (** Operators *)
@@ -88,7 +112,7 @@ module Definitions = struct
 
     val of_sequence : 'a Sequence.t -> 'a t
     val to_sequence : 'a t -> 'a Sequence.t
-    val of_list_rev : 'a list -> 'a t
+    val of_list_rev : ('a : value_or_null mod separable). 'a list -> 'a t
     val of_list_map : 'a list -> f:local_ ('a -> 'b) -> 'b t
     val of_list_mapi : 'a list -> f:local_ (int -> 'a -> 'b) -> 'b t
     val of_list_rev_map : 'a list -> f:local_ ('a -> 'b) -> 'b t
@@ -341,6 +365,16 @@ module Definitions = struct
       (*_ [Iarray]-specific *)
 
       val last_exn : local_ 'a t -> local_ 'a
+
+      val to_array_of_immediates
+        : ('a : immediate64_or_null).
+        local_ 'a t -> local_ 'a array
+      [@@zero_alloc] [@@warning "-incompatible-with-upstream"]
+
+      val sort_immediates
+        : ('a : immediate64_or_null).
+        local_ 'a t -> compare:local_ ('a -> 'a -> int) -> local_ 'a t
+      [@@warning "-incompatible-with-upstream"]
 
       module Let_syntax : sig
         val return : local_ 'a -> local_ 'a t

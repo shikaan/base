@@ -14,7 +14,7 @@ module Definitions = struct
   [@@@mode.default m = (global, local)]
 
   module type Arg = sig
-    type t [@@deriving (compare [@mode m]), hash, sexp]
+    type t [@@deriving (compare [@mode.explicit m]), hash, sexp]
 
     include Stringable.S with type t := t
 

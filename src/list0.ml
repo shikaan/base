@@ -22,15 +22,13 @@ let max_non_tailcall =
   | Sys.Other _ -> 50
 ;;
 
-let hd_exn = Stdlib.List.hd
-let tl_exn = Stdlib.List.tl
 let unzip = Stdlib.List.split
 
 module%template Constructors = struct
   type ('a : k) t =
     | []
-    | ( :: ) of 'a * ('a t[@kind k])
-  [@@kind
+    | ( :: ) of 'a * ('a t[@kind.explicit k])
+  [@@kind.explicit
     k
     = ( base_non_value
       , value_or_null & value_or_null
@@ -42,6 +40,12 @@ module%template Constructors = struct
     | []
     | ( :: ) of 'a * 'a t
 
+  type ('a : value_or_null) t = 'a list =
+    | []
+    | ( :: ) of 'a * 'a t
+  [@@kind.explicit value_or_null]
+
+  (* Avoid re-deriving [compare] and [equal] *)
   [%%rederive
     type ('a : value_or_null) t = 'a list [@@deriving compare ~localize, equal ~localize]]
 end
@@ -50,6 +54,18 @@ open Constructors
 
 (* Some of these are eta expanded in order to permute parameter order to follow Base
    conventions. *)
+
+let%template hd_exn = function
+  | [] -> failwith "hd"
+  | a :: _ -> a
+[@@mode l = (global, local)]
+;;
+
+let%template tl_exn = function
+  | [] -> failwith "tl"
+  | _ :: l -> l
+[@@mode l = (global, local)]
+;;
 
 let is_empty = function
   | [] -> true
@@ -80,48 +96,48 @@ let length =
 ;;
 
 let exists t ~f =
-  let rec loop t ~f =
+  let rec exists_loop t ~f =
     match t with
     | [] -> false
-    | x :: xs -> if f x then true else loop xs ~f
+    | x :: xs -> if f x then true else exists_loop xs ~f
   in
-  loop t ~f
-[@@mode m = (local, global)]
+  exists_loop t ~f
+[@@mode l = (local, global)]
 ;;
 
 let iter t ~f =
-  let rec loop t ~f =
+  let rec iter_loop t ~f =
     match t with
     | [] -> ()
     | a :: l ->
       f a;
-      loop l ~f
+      iter_loop l ~f
   in
-  loop t ~f
-[@@mode m = (local, global)]
+  iter_loop t ~f
+[@@mode l = (local, global)]
 ;;
 
 (* Copied from [Stdlib] for templating *)
-let rev_append (l1 @ m) (l2 @ m) =
-  let rec loop l1 l2 =
+let rev_append (l1 @ l) (l2 @ l) =
+  let rec rev_append_loop l1 l2 =
     match l1 with
     | [] -> l2
-    | a :: l -> loop l (a :: l2) [@exclave_if_stack a]
+    | a :: l -> rev_append_loop l (a :: l2) [@exclave_if_stack a]
   in
-  loop l1 l2 [@exclave_if_stack a]
-[@@alloc a @ m = (stack_local, heap_global)]
+  rev_append_loop l1 l2 [@exclave_if_stack a]
+[@@alloc a @ l = (stack_local, heap_global)]
 ;;
 
-let rev (l @ m) =
+let rev (l @ l) =
   match l with
   | ([] | [ _ ]) as res -> res
   | x :: y :: rest ->
     (rev_append [@alloc a] [@kind k]) rest [ y; x ] [@exclave_if_stack a]
-[@@alloc a @ m = (stack_local, heap_global)]
+[@@alloc a @ l = (stack_local, heap_global)]
 ;;
 
-let for_all t ~(f @ local) = not ((exists [@kind k] [@mode m]) t ~f:(fun x -> not (f x)))
-[@@mode m = (local, global)]
+let for_all t ~(f @ local) = not ((exists [@kind k] [@mode l]) t ~f:(fun x -> not (f x)))
+[@@mode l = (local, global)]
 ;;
 
 [@@@kind ka = k]
@@ -135,27 +151,17 @@ let for_all t ~(f @ local) = not ((exists [@kind k] [@mode m]) t ~f:(fun x -> no
       , value_or_null & value_or_null & value_or_null
       , value_or_null & value_or_null & value_or_null & value_or_null )]
 
-let fold_alloc
-  (t @ ma)
-  ~(init @ mb)
-  ~(f : ((_ : kb) @ mb -> _ @ ma -> (_ : kb) @ mb) @ local)
-  =
-  (let rec loop acc = function
-     | [] -> acc
-     | a :: l -> loop (f acc a) l [@exclave_if_stack ab]
-   in
-   loop init t [@nontail])
-  [@exclave_if_stack ab]
-[@@mode ma = (local, global)] [@@alloc ab @ mb = (stack_local, heap_global)]
-;;
-
-let fold = (fold_alloc [@mode ma] [@alloc stack] [@kind ka kb])
-[@@mode ma = (local, global), mb = local]
-;;
-
-let fold = (fold_alloc [@mode ma] [@alloc heap] [@kind ka kb])
-[@@mode ma = (local, global), mb = global]
+let fold (t @ ma) ~(init @ mb) ~(f : ((_ : kb) @ mb -> _ @ ma -> (_ : kb) @ mb) @ local) =
+  let rec fold_loop ~f acc = function
+    | [] -> acc
+    | a :: l ->
+      fold_loop ~f (f acc a) l [@exclave_if_local mb ~reasons:[ May_return_local ]]
+  in
+  fold_loop ~f init t [@nontail] [@exclave_if_local mb]
+[@@mode ma = (local, global), mb = (local, global)]
 ;;]
+
+open Constructors
 
 [@@@kind.default kb = base_or_null]
 
@@ -182,13 +188,14 @@ let rec exists2_ok l1 l2 ~(local_ f : _ -> _ -> _) =
   | _, _ -> invalid_arg "List.exists2"
 ;;
 
-let rec iter2_ok l1 l2 ~(local_ f : _ -> _ -> unit) =
+let%template rec iter2_ok l1 l2 ~(local_ f : _ @ l -> _ @ l -> unit) =
   match l1, l2 with
   | [], [] -> ()
   | a1 :: l1, a2 :: l2 ->
     f a1 a2;
-    iter2_ok l1 l2 ~f
+    (iter2_ok [@mode l]) l1 l2 ~f
   | _, _ -> invalid_arg "List.iter2"
+[@@mode l = (global, local)]
 ;;
 
 let rec for_all2_ok l1 l2 ~(local_ f : _ -> _ -> _) =
@@ -220,11 +227,11 @@ let nontail_mapi t ~f = Stdlib.List.mapi t ~f
 let partition t ~f = Stdlib.List.partition t ~f
 
 [%%template
-[@@@mode.default mi = (global, local)]
-[@@@alloc.default a @ mo = (heap_global, stack_local)]
+[@@@mode.default li = (global, local)]
+[@@@alloc.default a @ lo = (heap_global, stack_local)]
 
 let partition_map_unboxed_tail ~fst ~snd ~f xs =
-  let rec loop ~fst ~snd ~(f @ local) = function
+  let rec partition_map_unboxed_tail_loop ~fst ~snd ~(f @ local) = function
     | [] -> #((rev [@alloc a]) fst, (rev [@alloc a]) snd) [@exclave_if_stack a]
     | x :: xs ->
       (let #(fst, snd) =
@@ -232,23 +239,23 @@ let partition_map_unboxed_tail ~fst ~snd ~f xs =
          | First y -> #(y :: fst, snd)
          | Second y -> #(fst, y :: snd)
        in
-       loop ~fst ~snd ~f xs)
+       partition_map_unboxed_tail_loop ~fst ~snd ~f xs)
       [@exclave_if_stack a]
   in
-  loop ~fst ~snd ~f xs [@exclave_if_stack a]
+  partition_map_unboxed_tail_loop ~fst ~snd ~f xs [@exclave_if_stack a]
 ;;
 
 (* call-stack size <= input data-stack size *)
 let partition_map_unboxed ~depth ~f xs =
-  let rec loop ~depth ~f = function
+  let rec partition_map_unboxed_loop ~depth ~f = function
     | [] -> #([], [])
     | x :: xs ->
       (let y = f x in
        let #(fst, snd) =
          if depth <= max_non_tailcall
-         then loop ~depth:(depth + 1) ~f xs
+         then partition_map_unboxed_loop ~depth:(depth + 1) ~f xs
          else
-           (partition_map_unboxed_tail [@mode mi] [@alloc a] [@inlined never])
+           (partition_map_unboxed_tail [@mode li] [@alloc a] [@inlined never])
              ~fst:[]
              ~snd:[]
              ~f
@@ -259,11 +266,11 @@ let partition_map_unboxed ~depth ~f xs =
         | Second y -> #(fst, y :: snd)))
       [@exclave_if_stack a]
   in
-  loop ~depth ~f xs [@exclave_if_stack a]
+  partition_map_unboxed_loop ~depth ~f xs [@exclave_if_stack a]
 ;;
 
 let partition_map t ~f =
-  (let #(fst, snd) = (partition_map_unboxed [@mode mi] [@alloc a]) ~depth:0 ~f t in
+  (let #(fst, snd) = (partition_map_unboxed [@mode li] [@alloc a]) ~depth:0 ~f t in
    fst, snd)
   [@exclave_if_stack a]
 ;;]
@@ -291,18 +298,12 @@ let%template fold_right (l @ ma) ~(local_ f : _ @ ma -> _ @ mb -> _ @ mb) ~init 
   | [] -> init (* avoid the allocation of [~f] below *)
   | _ ->
     (fold [@mode local mb])
-      ~f:(fun a b -> f (unwrap b) a [@nontail] [@exclave_if_stack ab])
+      ~f:(fun a b ->
+        f (unwrap b) a [@nontail] [@exclave_if_local mb ~reasons:[ May_return_local ]])
       ~init
-      ((rev [@alloc stack]) (wrap_list l)) [@nontail] [@exclave_if_stack ab]
-[@@mode ma = (local, global)] [@@alloc ab @ mb = (stack_local, heap_global)]
-;;
-
-let%template fold_right = (fold_right [@mode ma] [@alloc stack])
-[@@mode ma = (local, global), __ = local]
-;;
-
-let%template fold_right = (fold_right [@mode ma] [@alloc heap])
-[@@mode ma = (local, global), __ = global]
+      ((rev [@alloc stack]) (wrap_list l))
+    [@nontail] [@exclave_if_local mb ~reasons:[ May_return_local ]]
+[@@mode ma = (local, global), mb = (local, global)]
 ;;
 
 let fold_right2_ok l1 l2 ~(local_ f : _ -> _ -> _ -> _) ~init =

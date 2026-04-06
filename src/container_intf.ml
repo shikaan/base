@@ -19,7 +19,7 @@ end
 [@@@warning "-incompatible-with-upstream"]
 
 [%%template
-[@@@kind_set.define base_with_ext = (base, value mod external64)]
+[@@@kind_set.define base_or_null_with_ext = (base_or_null, value_or_null mod external64)]
 
 module Definitions = struct
   module Export = struct
@@ -42,7 +42,7 @@ module Definitions = struct
     type t : k
 
     (** The result of summing no values. *)
-    val zero : (t Toplevel_value.t[@kind k])
+    val zero : t
 
     (** An operation that combines two [t]'s and handles [zero + x] by just returning [x],
         as well as in the symmetric case. *)
@@ -53,260 +53,288 @@ module Definitions = struct
   [@@mode m = (global, local)]
 
   module type Summable = Summable [@kind.explicit value_or_null] [@mode m]
-  [@@kind.explicit __ = (value, value mod external64)] [@@mode m = (global, local)]
-
-  module type Summable = Summable [@kind.explicit value] [@mode m]
   [@@mode m = (global, local)]
 
   module type Generic_types = sig
     [@@@kind.default k = ks]
+    [@@@kind k = k mod separable]
 
+    (** A [('a, 'p1, 'p2) t] represents a container whose elements are ['a elt]s. ['p1]
+        and ['p2] are available for extra phantom types a container may track; for
+        example, the ['key] type of a [Core.Hash_queue]. *)
     type ('a : k, _, _) t
+
+    (** ['a elt] abstracts over monomorphic and polymorphic containers. In polymorphic
+        containers like ['a list], we substitute ['a elt := 'a] (see [S1] and friends
+        below); In monomorphic containers like [string], we substitute ['a elt] with the
+        element type (e.g. [char]; see [S0] and friends below). *)
     type ('a : k) elt : k
   end
   [@@kind_set.explicit
-    ks = (value, value_or_null, value mod external64, base, base_with_ext)]
+    ks = (value, value_or_null, value mod external64, base, base_or_null_with_ext)]
 
   module type Generic_types = Generic_types [@kind_set.explicit value]
 
   include struct
-    [@@@alloc.default a @ m = (heap_global, stack_local)]
+    [@@@alloc a @ m = (heap_global, stack_local)]
 
     (*_ We template the following interfaces over the set of kinds that are allowed in the
         container [t]. Each such kind set has an associated set of kinds allowed in types
         that appear as function arguments/returns but are not put into [t]. For example, a
         container that only allows [value mod external64]s can easily still implement
-        [fold] with a [value] accumulator. That kind set is currently [ks or value]. *)
+        [fold] with a [value] accumulator. *)
 
-    [@@@kind_set.default.explicit
-      ks = (value, value_or_null, value mod external64, base_with_ext)]
+    [@@@kind_set
+      (ks, ks_not_in_t)
+      = ( (value, value)
+        , (value_or_null, value_or_null)
+        , (value mod external64, value)
+        , (base_or_null_with_ext, base_or_null) )]
 
-    module type Generic_without_mem = sig
-      include Generic_types [@kind_set.explicit ks]
+    include struct
+      [@@@alloc.default a]
+      [@@@kind_set.default.explicit ks]
 
-      include sig
-        (*_ Here, we use [default_if_multiple] because this interface:
-            (1) Sometimes uses [ks] to represent a single kind that we eventually would
-                make an abstract kind
-            (2) Sometimes uses [ks] to represent a "universe" of kinds that the interface
-                broadly understands and supports all combinations of (which we eventually
-                will replace with layout polymorphism)
+      module type Generic_without_mem = sig
+        include Generic_types [@kind_set.explicit ks]
 
-            In case (1), there is only one version of each function, so we don't actually
-            want to mangle it over [k = ks] (because it's silly for users of e.g.
-            [imm_array] to have to call [(length [@kind immediate64])] to compute the
-            length of their array).
+        type ('a : k1, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind.explicit k1 = ks]
+        type ('a : k1) elt : k1 := ('a elt[@kind k1]) [@@kind.explicit k1 = ks]
 
-            In case (2), since there are many versions of each function, we mangle the
-            functions. *)
+        include sig
+          (*_ Here, we use [default_if_multiple] because this interface:
+              (1) Sometimes uses [ks] to represent a single kind that we eventually would
+                  make an abstract kind
+              (2) Sometimes uses [ks] to represent a "universe" of kinds that the
+                  interface broadly understands and supports all combinations of (which we
+                  eventually will replace with layout polymorphism)
 
-        [@@@kind.default_if_multiple k1 = ks]
+              In case (1), there is only one version of each function, so we don't
+              actually want to mangle it over [k = ks] (because it's silly for users of
+              e.g. [imm_array] to have to call [(length [@kind immediate64])] to compute
+              the length of their array).
 
-        type ('a : k1, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind value]
-        type ('a : k1) elt : k1 := ('a elt[@kind k1]) [@@kind value]
+              In case (2), since there are many versions of each function, we mangle the
+              functions. *)
 
-        val length : ('a : k1) 'p1 'p2. ('a, 'p1, 'p2) t @ m -> int
-        val is_empty : ('a : k1) 'p1 'p2. ('a, 'p1, 'p2) t @ m -> bool
+          [@@@kind.default_if_multiple k1' = ks]
+          [@@@kind k1 = k1' mod separable]
 
-        (** [iter] must allow exceptions raised in [f] to escape, terminating the
-            iteration cleanly. The same holds for all functions below taking an [f]. *)
-        val iter
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> unit) @ local -> unit
-        [@@mode m = (global, m)]
+          type ('a : k1, 'b, 'c) t := (('a, 'b, 'c) t[@kind.explicit k1']) [@@kind value]
+          type ('a : k1) elt : k1 := ('a elt[@kind.explicit k1']) [@@kind value]
 
-        (** Returns [true] if and only if there exists an element for which the provided
-            function evaluates to [true]. This is a short-circuiting operation. *)
-        val exists
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> bool
-        [@@mode m = (global, m)]
+          val length : ('a : k1) 'p1 'p2. ('a, 'p1, 'p2) t @ m -> int
+          val is_empty : ('a : k1) 'p1 'p2. ('a, 'p1, 'p2) t @ m -> bool
 
-        (** Returns [true] if and only if the provided function evaluates to [true] for
-            all elements. This is a short-circuiting operation. *)
-        val for_all
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> bool
-        [@@mode m = (global, m)]
+          (** [iter] must allow exceptions raised in [f] to escape, terminating the
+              iteration cleanly. The same holds for all functions below taking an [f]. *)
+          val iter
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> unit) @ local -> unit
+          [@@mode m = (global, m)]
 
-        (** Returns the number of elements for which the provided function evaluates to
-            true. *)
-        val count
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> int
-        [@@mode m = (global, m)]
+          (** Returns [true] if and only if there exists an element for which the provided
+              function evaluates to [true]. This is a short-circuiting operation. *)
+          val exists
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> bool
+          [@@mode m = (global, m)]
 
-        (** Returns as an [option] the first element for which [f] evaluates to true. *)
-        val find
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m
-          -> f:('a elt @ m -> bool) @ local
-          -> ('a elt Option.t[@kind k1 or value_or_null]) @ m
-        [@@mode m = (global, m)]
+          (** Returns [true] if and only if the provided function evaluates to [true] for
+              all elements. This is a short-circuiting operation. *)
+          val for_all
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> bool
+          [@@mode m = (global, m)]
 
-        val to_list
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m
-          -> ('a elt List0.Constructors.t[@kind k1 or value_or_null]) @ m
-        [@@alloc __ @ m = (heap_global, a @ m)]
+          (** Returns the number of elements for which the provided function evaluates to
+              true. *)
+          val count
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> int
+          [@@mode m = (global, m)]
 
-        (** Returns a min (resp. max) element from the collection using the provided
-            [compare] function. In case of a tie, the first element encountered while
-            traversing the collection is returned. The implementation uses [fold] so it
-            has the same complexity as [fold]. Returns [None] iff the collection is empty. *)
-        val min_elt
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m
-          -> compare:('a elt @ m -> 'a elt @ m -> int) @ local
-          -> ('a elt Option.t[@kind k1 or value_or_null]) @ m
-        [@@mode m = (global, m)]
+          (** Returns as an [option] the first element for which [f] evaluates to true. *)
+          val find
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m
+            -> f:('a elt @ m -> bool) @ local
+            -> ('a elt Option.t[@kind k1' or value_or_null]) @ m
+          [@@mode m = (global, m)]
 
-        val max_elt
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m
-          -> compare:('a elt @ m -> 'a elt @ m -> int) @ local
-          -> ('a elt Option.t[@kind k1 or value_or_null]) @ m
-        [@@mode m = (global, m)]
+          val to_list
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m
+            -> ('a elt List0.Constructors.t[@kind k1' or value_or_null]) @ m
+          [@@alloc __ @ m = (heap_global, a @ m)]
 
-        [@@@kind.default_if_multiple k2 = (ks or value)]
+          (** Returns a min (resp. max) element from the collection using the provided
+              [compare] function. In case of a tie, the first element encountered while
+              traversing the collection is returned. The implementation uses [fold] so it
+              has the same complexity as [fold]. Returns [None] iff the collection is
+              empty. *)
+          val min_elt
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m
+            -> compare:('a elt @ m -> 'a elt @ m -> int) @ local
+            -> ('a elt Option.t[@kind k1' or value_or_null]) @ m
+          [@@mode m = (global, m)]
 
-        (** Returns the sum of [f i] for all [i] in the container. The order in which the
-            elements will be summed is unspecified. *)
-        val sum
-          : ('a : k1) ('sum : k2) 'p1 'p2.
-          ((module Summable with type t = 'sum)[@mode mo] [@kind.explicit k2])
-          -> ('a, 'p1, 'p2) t @ mi
-          -> f:('a elt @ mi -> 'sum @ mo) @ local
-          -> 'sum @ mo
-        [@@mode mi = (global, m), mo = (global, m)]
+          val max_elt
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m
+            -> compare:('a elt @ m -> 'a elt @ m -> int) @ local
+            -> ('a elt Option.t[@kind k1' or value_or_null]) @ m
+          [@@mode m = (global, m)]
 
-        (** [iter_until t ~f ~finish] is a short-circuiting version of [iter]. If [f]
-            returns [Stop x] the computation ceases and returns [x]. If [f] always returns
-            [Continue ()] the final result is computed by [finish]. *)
-        val iter_until
-          : ('a : k1) 'p1 'p2 ('final : k2).
-          ('a, 'p1, 'p2) t @ mi
-          -> f:
-               ('a elt @ mi
-                -> ((unit, 'final) Continue_or_stop.t
-                   [@kind value_or_null (k2 or value_or_null)])
-                   @ mo)
-             @ local
-          -> finish:(unit -> 'final @ mo) @ local
-          -> 'final @ mo
-        [@@mode mi = (global, m), mo = (global, m)]
+          [@@@kind.default_if_multiple k2 = ks_not_in_t]
 
-        (** [fold t ~init ~f] returns [f (... f (f (f init e1) e2) e3 ...) en], where
-            [e1..en] are the elements of [t]. *)
-        val fold
-          : ('a : k1) 'p1 'p2 ('acc : k2).
-          ('a, 'p1, 'p2) t @ mi
-          -> init:'acc @ mo
-          -> f:('acc @ mo -> 'a elt @ mi -> 'acc @ mo) @ local
-          -> 'acc @ mo
-        [@@mode mi = (global, m), mo = (global, m)]
+          (** Returns the sum of [f i] for all [i] in the container. The order in which
+              the elements will be summed is unspecified. *)
+          val sum
+            : ('a : k1) ('sum : k2) 'p1 'p2.
+            ((module Summable with type t = 'sum)
+            [@mode mo] [@kind.explicit k2 or value_or_null])
+            -> ('a, 'p1, 'p2) t @ mi
+            -> f:('a elt @ mi -> 'sum @ mo) @ local
+            -> 'sum @ mo
+          [@@mode mi = (global, m), mo = (global, m)]
 
-        (** [fold_result t ~init ~f] is a short-circuiting version of [fold] that runs in
-            the [Result] monad. If [f] returns an [Error _], that value is returned
-            without any additional invocations of [f]. *)
-        val fold_result
-          : ('a : k1) 'p1 'p2 ('acc : k2) 'e.
-          ('a, 'p1, 'p2) t @ mi
-          -> init:'acc @ mo
-          -> f:('acc @ mo -> 'a elt @ mi -> (('acc, 'e) Result.t[@kind k2]) @ mo) @ local
-          -> (('acc, 'e) Result.t[@kind k2]) @ mo
-        [@@mode mi = (global, m), mo = (global, m)]
+          (** [iter_until t ~f ~finish] is a short-circuiting version of [iter]. If [f]
+              returns [Stop x] the computation ceases and returns [x]. If [f] always
+              returns [Continue ()] the final result is computed by [finish]. *)
+          val iter_until
+            : ('a : k1) 'p1 'p2 ('final : k2).
+            ('a, 'p1, 'p2) t @ mi
+            -> f:
+                 ('a elt @ mi
+                  -> ((unit, 'final) Continue_or_stop.t
+                     [@kind value_or_null (k2 or value_or_null)])
+                     @ mo)
+               @ local
+            -> finish:(unit -> 'final @ mo) @ local
+            -> 'final @ mo
+          [@@mode mi = (global, m), mo = (global, m)]
 
-        (** Returns the first evaluation of [f] that returns [Some], and returns [None] if
-            there is no such element. *)
-        val find_map
-          : ('a : k1) 'p1 'p2 ('b : k2).
-          ('a, 'p1, 'p2) t @ mi
-          -> f:('a elt @ mi -> ('b Option.t[@kind k2]) @ mo) @ local
-          -> ('b Option.t[@kind k2]) @ mo
-        [@@mode mi = (global, m), mo = (global, m)]
+          (** [fold t ~init ~f] returns [f (... f (f (f init e1) e2) e3 ...) en], where
+              [e1..en] are the elements of [t]. *)
+          val fold
+            : ('a : k1) 'p1 'p2 ('acc : k2).
+            ('a, 'p1, 'p2) t @ mi
+            -> init:'acc @ mo
+            -> f:('acc @ mo -> 'a elt @ mi -> 'acc @ mo) @ local
+            -> 'acc @ mo
+          [@@mode mi = (global, m), mo = (global, m)]
 
-        [@@@kind.default_if_multiple k3 = (ks or value)]
+          (** [fold_result t ~init ~f] is a short-circuiting version of [fold] that runs
+              in the [Result] monad. If [f] returns an [Error _], that value is returned
+              without any additional invocations of [f]. *)
+          val fold_result
+            : ('a : k1) 'p1 'p2 ('acc : k2) 'e.
+            ('a, 'p1, 'p2) t @ mi
+            -> init:'acc @ mo
+            -> f:
+                 ('acc @ mo
+                  -> 'a elt @ mi
+                  -> (('acc, 'e) Result.t[@kind k2 or value_or_null]) @ mo)
+               @ local
+            -> (('acc, 'e) Result.t[@kind k2 or value_or_null]) @ mo
+          [@@mode mi = (global, m), mo = (global, m)]
 
-        (** [fold_until t ~init ~f ~finish] is a short-circuiting version of [fold]. If
-            [f] returns [Stop _] the computation ceases and results in that value. If [f]
-            returns [Continue _], the fold will proceed. If [f] never returns [Stop _],
-            the final result is computed by [finish].
+          (** Returns the first evaluation of [f] that returns [Some], and returns [None]
+              if there is no such element. *)
+          val find_map
+            : ('a : k1) 'p1 'p2 ('b : k2).
+            ('a, 'p1, 'p2) t @ mi
+            -> f:('a elt @ mi -> ('b Option.t[@kind k2 or value_or_null]) @ mo) @ local
+            -> ('b Option.t[@kind k2 or value_or_null]) @ mo
+          [@@mode mi = (global, m), mo = (global, m)]
 
-            Example:
+          [@@@kind.default_if_multiple k3 = ks_not_in_t]
 
-            {[
-              type maybe_negative =
-                | Found_negative of int
-                | All_nonnegative of { sum : int }
+          (** [fold_until t ~init ~f ~finish] is a short-circuiting version of [fold]. If
+              [f] returns [Stop _] the computation ceases and results in that value. If
+              [f] returns [Continue _], the fold will proceed. If [f] never returns
+              [Stop _], the final result is computed by [finish].
 
-              (** [first_neg_or_sum list] returns the first negative number in [list], if any,
-                  otherwise returns the sum of the list. *)
-              let first_neg_or_sum =
-                List.fold_until ~init:0
-                  ~f:(fun sum x ->
-                    if x < 0
-                    then Stop (Found_negative x)
-                    else Continue (sum + x))
-                  ~finish:(fun sum -> All_nonnegative { sum })
-              ;;
+              Example:
 
-              let x = first_neg_or_sum [1; 2; 3; 4; 5]
-              val x : maybe_negative = All_nonnegative {sum = 15}
+              {[
+                type maybe_negative =
+                  | Found_negative of int
+                  | All_nonnegative of { sum : int }
 
-              let y = first_neg_or_sum [1; 2; -3; 4; 5]
-              val y : maybe_negative = Found_negative -3
-            ]} *)
-        val fold_until
-          : ('a : k1) 'p1 'p2 ('acc : k2) ('final : k3).
-          ('a, 'p1, 'p2) t @ mi
-          -> init:'acc @ mo
-          -> f:
-               ('acc @ mo
-                -> 'a elt @ mi
-                -> (('acc, 'final) Continue_or_stop.t
-                   [@kind (k2 or value_or_null) (k3 or value_or_null)])
-                   @ mo)
-             @ local
-          -> finish:('acc @ mo -> 'final @ mo) @ local
-          -> 'final @ mo
-        [@@mode mi = (global, m), mo = (global, m)]
+                (** [first_neg_or_sum list] returns the first negative number in [list], if any,
+                    otherwise returns the sum of the list. *)
+                let first_neg_or_sum =
+                  List.fold_until ~init:0
+                    ~f:(fun sum x ->
+                      if x < 0
+                      then Stop (Found_negative x)
+                      else Continue (sum + x))
+                    ~finish:(fun sum -> All_nonnegative { sum })
+                ;;
+
+                let x = first_neg_or_sum [1; 2; 3; 4; 5]
+                val x : maybe_negative = All_nonnegative {sum = 15}
+
+                let y = first_neg_or_sum [1; 2; -3; 4; 5]
+                val y : maybe_negative = Found_negative -3
+              ]} *)
+          val fold_until
+            : ('a : k1) 'p1 'p2 ('acc : k2) ('final : k3).
+            ('a, 'p1, 'p2) t @ mi
+            -> init:'acc @ mo
+            -> f:
+                 ('acc @ mo
+                  -> 'a elt @ mi
+                  -> (('acc, 'final) Continue_or_stop.t
+                     [@kind (k2 or value_or_null) (k3 or value_or_null)])
+                     @ mo)
+               @ local
+            -> finish:('acc @ mo -> 'final @ mo) @ local
+            -> 'final @ mo
+          [@@mode mi = (global, m), mo = (global, m)]
+        end
       end
+
+      module type%template Generic_without_mem = Generic_without_mem
+      [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
+
+      module type Generic = sig
+        include Generic_without_mem [@kind_set.explicit ks] [@alloc a]
+
+        [@@@kind.default_if_multiple k' = ks]
+        [@@@kind k = k' mod separable]
+
+        (** Checks whether the provided element is there, using [equal]. *)
+        val mem
+          : ('a : k) 'p1 'p2.
+          (('a, 'p1, 'p2) t[@kind k']) @ m
+          -> ('a elt[@kind k']) @ m
+          -> equal:(('a elt[@kind k']) @ m -> ('a elt[@kind k']) @ m -> bool) @ local
+          -> bool
+        [@@mode m = (global, m)]
+      end
+
+      (** Like [Generic], but [mem] does not accept an [equal] function, since [Make0]
+          already takes [Elt.equal]. *)
+      module type Generic_for_s0 = sig
+        include Generic_without_mem [@kind_set.explicit ks] [@alloc a]
+
+        [@@@kind.default_if_multiple k' = ks]
+        [@@@kind k = k' mod separable]
+
+        (** Checks whether the provided element is there, using equality on [elt]s. *)
+        val mem : (('a, _, _) t[@kind k']) @ m -> ('a elt[@kind k']) @ m -> bool
+        [@@mode m = (global, m)]
+      end
+
+      module type%template Generic_for_s0 = Generic_for_s0
+      [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
     end
-
-    module type Generic_without_mem = Generic_without_mem
-    [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
-
-    module type Generic = sig
-      include Generic_without_mem [@kind_set.explicit ks] [@alloc a]
-
-      [@@@kind.default_if_multiple k = ks]
-
-      (** Checks whether the provided element is there, using [equal]. *)
-      val mem
-        : ('a : k) 'p1 'p2.
-        (('a, 'p1, 'p2) t[@kind k]) @ m
-        -> ('a elt[@kind k]) @ m
-        -> equal:(('a elt[@kind k]) @ m -> ('a elt[@kind k]) @ m -> bool) @ local
-        -> bool
-      [@@mode m = (global, m)]
-    end
-
-    (** Like [Generic], but [mem] does not accept an [equal] function, since [Make0]
-        already takes [Elt.equal]. *)
-    module type Generic_for_s0 = sig
-      include Generic_without_mem [@kind_set.explicit ks] [@alloc a]
-
-      [@@@kind.default_if_multiple k = ks]
-
-      (** Checks whether the provided element is there, using equality on [elt]s. *)
-      val mem : (('a, _, _) t[@kind k]) @ m -> ('a elt[@kind k]) @ m -> bool
-      [@@mode m = (global, m)]
-    end
-
-    module type Generic_for_s0 = Generic_for_s0 [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
   end
 
   include struct
@@ -325,14 +353,10 @@ module Definitions = struct
         anything else. *)
     module type
       [@kind_set.explicit
-        ks
-        = (*_ We can't implement this module type for [value_or_null] at the moment, since
-              [value_or_null] elements cannot reside in arrays. We could
-              template-specialize a separate [S0] for [value_or_null] that does not
-              contain [to_array], but do not currently have a need for it. *)
-        (value, value mod external64, base_with_ext)] S0 = sig
+        ks = (value, value_or_null, value mod external64, base_or_null_with_ext)] S0 = sig
       include sig
-        [@@@kind.default k = ks]
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
 
         type t
         type elt : k
@@ -343,10 +367,11 @@ module Definitions = struct
       [@kind_set.explicit ks]
       [@alloc a]
       [@with:
-        [@@@kind.default k = ks]
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
 
-        type (_ : k, _, _) t := (t[@kind k])
-        type (_ : k) elt := (elt[@kind k])]
+        type (_ : k, _, _) t := (t[@kind k'])
+        type (_ : k) elt := (elt[@kind k'])]
 
       [@@@kind.default_if_multiple k = ks]
 
@@ -357,9 +382,11 @@ module Definitions = struct
     module type S0 = S0 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
 
     module type
-      [@kind_set.explicit ks = (value, value mod external64, base_with_ext)] S0_phantom = sig
+      [@kind_set.explicit
+        ks = (value, value_or_null, value mod external64, base_or_null_with_ext)] S0_phantom = sig
       include sig
-        [@@@kind.default k = ks]
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
 
         type elt : k
         type 'phantom t
@@ -370,10 +397,11 @@ module Definitions = struct
       [@kind_set.explicit ks]
       [@alloc a]
       [@with:
-        [@@@kind.default k = ks]
+        [@@@kind.default k' = ks]
+        [@@@kind k = k' mod separable]
 
-        type (_ : k, 'phantom, _) t := ('phantom t[@kind k])
-        type (_ : k) elt := (elt[@kind k])]
+        type (_ : k, 'phantom, _) t := ('phantom t[@kind k'])
+        type (_ : k) elt := (elt[@kind k'])]
 
       [@@@kind.default_if_multiple k = ks]
 
@@ -386,188 +414,203 @@ module Definitions = struct
   end
 
   include struct
-    [@@@alloc.default a @ m = (heap_global, stack_local)]
+    [@@@alloc a @ m = (heap_global, stack_local)]
+    [@@@kind_set ks = (value, value_or_null, value mod external64, base_or_null_with_ext)]
 
-    [@@@kind_set.default.explicit
-      ks = (value, value_or_null, value mod external64, base_with_ext)]
+    include struct
+      [@@@alloc.default a]
+      [@@@kind_set.default.explicit ks]
 
-    (** Signature for polymorphic container, e.g., ['a list] or ['a array]. *)
+      (** Signature for polymorphic container, e.g., ['a list] or ['a array]. *)
 
-    module type S1 = sig
-      type ('a : k) t [@@kind k = ks]
+      module type S1 = sig
+        type ('a : k mod separable) t [@@kind k = ks]
 
-      include
-        Generic
-      [@kind_set.explicit ks]
-      [@alloc a]
-      [@with:
-        [@@@kind.default k = ks]
+        include
+          Generic
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
 
-        type ('a : k, _, _) t := ('a t[@kind k])
-        type ('a : k) elt := 'a]
+          type ('a : k, _, _) t := ('a t[@kind k'])
+          type ('a : k) elt := 'a]
 
-      [@@@kind.default_if_multiple k = ks]
+        [@@@kind.default_if_multiple k = ks]
 
-      (*_ This doesn't have a local version because arrays can't hold local values. *)
-      val to_array : ('a : k mod separable). ('a t[@kind k]) -> 'a array
-    end
-
-    module type S1 = S1 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
-
-    module type S1_phantom = sig
-      type ('a : k, 'phantom) t [@@kind k = ks]
-
-      include
-        Generic
-      [@kind_set.explicit ks]
-      [@alloc a]
-      [@with:
-        [@@@kind.default k = ks]
-
-        type ('a : k, 'phantom, _) t := (('a, 'phantom) t[@kind k])
-        type ('a : k) elt := 'a]
-
-      [@@@kind.default_if_multiple k = ks]
-
-      (*_ This doesn't have a local version because arrays can't hold local values. *)
-      val to_array : ('a : k mod separable) 'p. (('a, 'p) t[@kind k]) -> 'a array
-    end
-
-    module type S1_phantom = S1_phantom [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
-
-    module type Creators = sig
-      include Generic_types [@kind_set.explicit ks]
-
-      type (_, _, _) concat
-
-      include sig
-        [@@@kind.default_if_multiple k1 = ks]
-
-        type ('a : k1, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind value]
-        type ('a : k1) elt : k1 := ('a elt[@kind k1]) [@@kind value]
-
-        val of_list
-          : ('a : k1) 'p1 'p2.
-          ('a elt List0.Constructors.t[@kind k1 or value_or_null]) @ m
-          -> ('a, 'p1, 'p2) t @ m
-        [@@alloc __ @ m = (heap_global, a @ m)]
-
-        (** E.g., [append (of_list [a; b]) (of_list [c; d; e])] is
-            [of_list [a; b; c; d; e]] *)
-        val append
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m -> ('a, 'p1, 'p2) t @ m -> ('a, 'p1, 'p2) t @ m
-        [@@alloc __ @ m = (heap_global, a @ m)]
-
-        (** Concatenates a nested container. The elements of the inner containers are
-            concatenated together in order to give the result. *)
-        val concat
-          : ('a : k1) 'p1 'p2.
-          (('a, 'p1, 'p2) t, 'p1, 'p2) concat @ m -> ('a, 'p1, 'p2) t @ m
-        [@@alloc __ @ m = (heap_global, a @ m)]
-
-        (** [filter t ~f] returns all the elements of [t] that satisfy the predicate [f]. *)
-        val filter
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> ('a, 'p1, 'p2) t @ m
-        [@@alloc __ @ m = (heap_global, a @ m)]
-
-        (** [partition_tf t ~f] returns a pair [t1, t2], where [t1] is all elements of [t]
-            that satisfy [f], and [t2] is all elements of [t] that do not satisfy [f]. The
-            "tf" suffix is mnemonic to remind readers that the result is (trues, falses). *)
-        val partition_tf
-          : ('a : k1) 'p1 'p2.
-          ('a, 'p1, 'p2) t @ m
-          -> f:('a elt @ m -> bool) @ local
-          -> ('a, 'p1, 'p2) t * ('a, 'p1, 'p2) t @ m
-        [@@alloc __ @ m = (heap_global, a @ m)]
+        (*_ This doesn't have a local version because arrays can't hold local values. *)
+        val to_array : ('a : k mod separable). ('a t[@kind k]) -> 'a array
       end
 
-      [@@@kind.default_if_multiple k1 = ks]
-      [@@@kind.default_if_multiple k2 = ks]
+      module type%template S1 = S1 [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
 
-      (** [map f (of_list [a1; ...; an])] applies [f] to [a1], [a2], ..., [an], in order,
-          and builds a result equivalent to [of_list [f a1; ...; f an]]. *)
-      val map
-        : ('a : k1) 'p1 'p2 ('b : k2).
-        (('a, 'p1, 'p2) t[@kind k1]) @ mi
-        -> f:(('a elt[@kind k1]) @ mi -> ('b elt[@kind k2]) @ mo) @ local
-        -> (('b, 'p1, 'p2) t[@kind k2]) @ mo
-      [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
+      module type S1_phantom = sig
+        type ('a : k mod separable, 'phantom) t [@@kind k = ks]
 
-      (** [filter_map t ~f] applies [f] to every [x] in [t]. The result contains every [y]
-          for which [f x] returns [Some y]. *)
-      val filter_map
-        : ('a : k1) 'p1 'p2 ('b : k2).
-        (('a, 'p1, 'p2) t[@kind k1]) @ mi
-        -> f:
-             (('a elt[@kind k1]) @ mi
-              -> (('b elt[@kind k2]) Option.t[@kind k2 or value_or_null]) @ mo)
-           @ local
-        -> (('b, 'p1, 'p2) t[@kind k2]) @ mo
-      [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
+        include
+          Generic
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
 
-      (** [concat_map t ~f] is equivalent to [concat (map t ~f)]. *)
-      val concat_map
-        : ('a : k1) 'p1 'p2 ('b : k2).
-        (('a, 'p1, 'p2) t[@kind k1]) @ mi
-        -> f:(('a elt[@kind k1]) @ mi -> (('b, 'p1, 'p2) t[@kind k2]) @ mo) @ local
-        -> (('b, 'p1, 'p2) t[@kind k2]) @ mo
-      [@@mode mi = (global, m)] [@@alloc a @ mo = (heap_global, a @ m)]
+          type ('a : k, 'phantom, _) t := (('a, 'phantom) t[@kind k'])
+          type ('a : k) elt := 'a]
 
-      [@@@kind.default_if_multiple k3 = ks]
+        [@@@kind.default_if_multiple k = ks]
 
-      (** [partition_map t ~f] partitions [t] according to [f]. *)
-      val partition_map
-        : ('a : k1) 'p1 'p2 ('b : k2) ('c : k3).
-        (('a, 'p1, 'p2) t[@kind k1]) @ mi
-        -> f:
-             (('a elt[@kind k1]) @ mi
-              -> ((('b elt[@kind k2]), ('c elt[@kind k3])) Either.t
-                 [@kind (k2 or value_or_null) (k3 or value_or_null)])
-                 @ mo)
-           @ local
-        -> (('b, 'p1, 'p2) t[@kind k2]) * (('c, 'p1, 'p2) t[@kind k3]) @ mo
-      [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
-    end
+        (*_ This doesn't have a local version because arrays can't hold local values. *)
+        val to_array : ('a : k mod separable) 'p. (('a, 'p) t[@kind k]) -> 'a array
+      end
 
-    module type Creators = Creators [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
+      module type%template S1_phantom = S1_phantom [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
 
-    module type Generic_with_creators = sig
-      include Generic [@kind_set.explicit ks] [@alloc a]
+      module type Creators = sig
+        include Generic_types [@kind_set.explicit ks]
 
-      include
-        Creators
+        type ('a : k1, 'b, 'c) t := (('a, 'b, 'c) t[@kind k1]) [@@kind.explicit k1 = ks]
+        type ('a : k1) elt : k1 := ('a elt[@kind k1]) [@@kind.explicit k1 = ks]
+        type (_, _, _) concat
+
+        include sig
+          [@@@kind.default_if_multiple k1' = ks]
+          [@@@kind k1 = k1' mod separable]
+
+          type ('a : k1, 'b, 'c) t := (('a, 'b, 'c) t[@kind.explicit k1']) [@@kind value]
+          type ('a : k1) elt : k1 := ('a elt[@kind.explicit k1']) [@@kind value]
+
+          val of_list
+            : ('a : k1) 'p1 'p2.
+            ('a elt List0.Constructors.t[@kind k1' or value_or_null]) @ m
+            -> ('a, 'p1, 'p2) t @ m
+          [@@alloc __ @ m = (heap_global, a @ m)]
+
+          (** E.g., [append (of_list [a; b]) (of_list [c; d; e])] is
+              [of_list [a; b; c; d; e]] *)
+          val append
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m -> ('a, 'p1, 'p2) t @ m -> ('a, 'p1, 'p2) t @ m
+          [@@alloc __ @ m = (heap_global, a @ m)]
+
+          (** Concatenates a nested container. The elements of the inner containers are
+              concatenated together in order to give the result. *)
+          val concat
+            : ('a : k1) 'p1 'p2.
+            (('a, 'p1, 'p2) t, 'p1, 'p2) concat @ m -> ('a, 'p1, 'p2) t @ m
+          [@@alloc __ @ m = (heap_global, a @ m)]
+
+          (** [filter t ~f] returns all the elements of [t] that satisfy the predicate
+              [f]. *)
+          val filter
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m -> f:('a elt @ m -> bool) @ local -> ('a, 'p1, 'p2) t @ m
+          [@@alloc __ @ m = (heap_global, a @ m)]
+
+          (** [partition_tf t ~f] returns a pair [t1, t2], where [t1] is all elements of
+              [t] that satisfy [f], and [t2] is all elements of [t] that do not satisfy
+              [f]. The "tf" suffix is mnemonic to remind readers that the result is
+              (trues, falses). *)
+          val partition_tf
+            : ('a : k1) 'p1 'p2.
+            ('a, 'p1, 'p2) t @ m
+            -> f:('a elt @ m -> bool) @ local
+            -> ('a, 'p1, 'p2) t * ('a, 'p1, 'p2) t @ m
+          [@@alloc __ @ m = (heap_global, a @ m)]
+        end
+
+        [@@@kind.default_if_multiple k1' = ks]
+        [@@@kind.default_if_multiple k2' = ks]
+        [@@@kind k1 = k1' mod separable, k2 = k2' mod separable]
+
+        (** [map f (of_list [a1; ...; an])] applies [f] to [a1], [a2], ..., [an], in
+            order, and builds a result equivalent to [of_list [f a1; ...; f an]]. *)
+        val map
+          : ('a : k1) 'p1 'p2 ('b : k2).
+          (('a, 'p1, 'p2) t[@kind k1']) @ mi
+          -> f:(('a elt[@kind k1']) @ mi -> ('b elt[@kind k2']) @ mo) @ local
+          -> (('b, 'p1, 'p2) t[@kind k2']) @ mo
+        [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
+
+        (** [filter_map t ~f] applies [f] to every [x] in [t]. The result contains every
+            [y] for which [f x] returns [Some y]. *)
+        val filter_map
+          : ('a : k1) 'p1 'p2 ('b : k2).
+          (('a, 'p1, 'p2) t[@kind k1']) @ mi
+          -> f:
+               (('a elt[@kind k1']) @ mi
+                -> (('b elt[@kind k2']) Option.t[@kind k2' or value_or_null]) @ mo)
+             @ local
+          -> (('b, 'p1, 'p2) t[@kind k2']) @ mo
+        [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
+
+        (** [concat_map t ~f] is equivalent to [concat (map t ~f)]. *)
+        val concat_map
+          : ('a : k1) 'p1 'p2 ('b : k2).
+          (('a, 'p1, 'p2) t[@kind k1']) @ mi
+          -> f:(('a elt[@kind k1']) @ mi -> (('b, 'p1, 'p2) t[@kind k2']) @ mo) @ local
+          -> (('b, 'p1, 'p2) t[@kind k2']) @ mo
+        [@@mode mi = (global, m)] [@@alloc a @ mo = (heap_global, a @ m)]
+
+        [@@@kind.default_if_multiple k3' = ks]
+        [@@@kind k3 = k3' mod separable]
+
+        (** [partition_map t ~f] partitions [t] according to [f]. *)
+        val partition_map
+          : ('a : k1) 'p1 'p2 ('b : k2) ('c : k3).
+          (('a, 'p1, 'p2) t[@kind k1']) @ mi
+          -> f:
+               (('a elt[@kind k1']) @ mi
+                -> ((('b elt[@kind k2']), ('c elt[@kind k3'])) Either.t
+                   [@kind (k2' or value_or_null) (k3' or value_or_null)])
+                   @ mo)
+             @ local
+          -> (('b, 'p1, 'p2) t[@kind k2']) * (('c, 'p1, 'p2) t[@kind k3']) @ mo
+        [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
+      end
+
+      module type%template Creators = Creators [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
+
+      module type Generic_with_creators = sig
+        include Generic [@kind_set.explicit ks] [@alloc a]
+
+        include
+          Creators
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a : k, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
+          type ('a : k) elt := ('a elt[@kind k'])]
+      end
+
+      (** Like [Generic_with_creators], but [mem] does not accept an [equal] function,
+          since [Make0_with_creators] already takes [Elt.equal]. *)
+      module type Generic_with_creators_for_s0 = sig
+        include Generic_for_s0 [@kind_set.explicit ks] [@alloc a]
+
+        include
+          Creators
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a : k, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
+          type ('a : k) elt := ('a elt[@kind k'])]
+      end
+
+      module type%template Generic_with_creators_for_s0 = Generic_with_creators_for_s0
       [@kind_set.explicit ks]
-      [@alloc a]
-      [@with:
-        [@@@kind.default k = ks]
-
-        type ('a : k, 'b, 'c) t := (('a, 'b, 'c) t[@kind k])
-        type ('a : k) elt := ('a elt[@kind k])]
+      [@@kind_set ks = value] [@@alloc a]
     end
-
-    (** Like [Generic_with_creators], but [mem] does not accept an [equal] function, since
-        [Make0_with_creators] already takes [Elt.equal]. *)
-    module type Generic_with_creators_for_s0 = sig
-      include Generic_for_s0 [@kind_set.explicit ks] [@alloc a]
-
-      include
-        Creators
-      [@kind_set.explicit ks]
-      [@alloc a]
-      [@with:
-        [@@@kind.default k = ks]
-
-        type ('a : k, 'b, 'c) t := (('a, 'b, 'c) t[@kind k])
-        type ('a : k) elt := ('a elt[@kind k])]
-    end
-
-    module type Generic_with_creators_for_s0 = Generic_with_creators_for_s0
-    [@kind_set.explicit ks]
-    [@@kind_set ks = value]
   end
 
   include struct
@@ -584,67 +627,83 @@ module Definitions = struct
     end
     [@@kind_set ks = value]
 
-    (*_ This is outside the template because an [immediate] container can't contain itself *)
+    include struct
+      [@@@alloc.default a]
 
-    module type [@kind_set.explicit ks = (value, base_with_ext)] S0_with_creators = sig
-      include sig
-        [@@@kind.default k = ks]
+      (*_ This is outside the template because an [immediate] container can't contain
+          itself *)
 
-        type t
-        type elt : k
+      module type
+        [@kind_set.explicit ks = (value, base_or_null_with_ext)] S0_with_creators = sig
+        include sig
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type t
+          type elt : k
+        end
+
+        include
+          Generic_with_creators_for_s0
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          type (_, _, _) concat := t list
+
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
+
+          type ('a : k, _, _) t := (t[@kind k'])
+          type (_ : k) elt := (elt[@kind k'])]
+
+        [@@@kind.default_if_multiple k = ks]
+
+        (*_ This doesn't have a local version because arrays can't hold local values. *)
+        val to_array : (t[@kind k]) -> (elt[@kind k]) array
+
+        val of_array : (elt[@kind k]) array @ m -> (t[@kind k]) @ m
+        [@@alloc __ @ m = (heap_global, a @ m)]
       end
 
-      include
-        Generic_with_creators_for_s0
-      [@kind_set.explicit ks]
-      [@alloc a]
-      [@with:
-        type (_, _, _) concat := t list
-
-        [@@@kind.default k = ks]
-
-        type ('a, _, _) t := (t[@kind k])
-        type _ elt := (elt[@kind k])]
-
-      [@@@kind.default_if_multiple k = ks]
-
-      (*_ This doesn't have a local version because arrays can't hold local values. *)
-      val to_array : (t[@kind k]) -> (elt[@kind k]) array
-
-      val of_array : (elt[@kind k]) array @ m -> (t[@kind k]) @ m
-      [@@alloc __ @ m = (heap_global, a @ m)]
+      module type S0_with_creators = S0_with_creators [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value]
     end
 
-    module type S0_with_creators = S0_with_creators [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
+    [@@@kind_set ks = (value, value_or_null, base_or_null_with_ext)]
 
-    module type
-      [@kind_set.explicit ks = (value, value_or_null, base_with_ext)] S1_with_creators = sig
-      type ('a : k) t [@@kind k = ks]
+    include struct
+      [@@@alloc.default a]
+      [@@@kind_set.default.explicit ks]
 
-      include
-        Generic_with_creators
-      [@kind_set.explicit ks]
-      [@alloc a]
-      [@with:
-        type ('a, _, _) concat := 'a t
+      module type S1_with_creators = sig
+        type ('a : k mod separable) t [@@kind k = ks]
 
-        [@@@kind.default k = ks]
+        include
+          Generic_with_creators
+        [@kind_set.explicit ks]
+        [@alloc a]
+        [@with:
+          type ('a, _, _) concat := 'a t
 
-        type ('a : k, _, _) t := ('a t[@kind k])
-        type ('a : k) elt := 'a]
+          [@@@kind.default k' = ks]
+          [@@@kind k = k' mod separable]
 
-      [@@@kind.default_if_multiple k = ks]
+          type ('a : k, _, _) t := ('a t[@kind k'])
+          type ('a : k) elt := 'a]
 
-      (*_ This doesn't have a local version because arrays can't hold local values. *)
-      val to_array : ('a : k mod separable). ('a t[@kind k]) -> 'a array
+        [@@@kind.default_if_multiple k = ks]
 
-      val of_array : ('a : k mod separable). 'a array @ m -> ('a t[@kind k]) @ m
-      [@@alloc __ @ m = (heap_global, a @ m)]
+        (*_ This doesn't have a local version because arrays can't hold local values. *)
+        val to_array : ('a : k mod separable). ('a t[@kind k]) -> 'a array
+
+        val of_array : ('a : k mod separable). 'a array @ m -> ('a t[@kind k]) @ m
+        [@@alloc __ @ m = (heap_global, a @ m)]
+      end
+
+      module type%template S1_with_creators = S1_with_creators
+      [@kind_set.explicit ks] [@alloc a]
+      [@@kind_set ks = value] [@@alloc a]
     end
-
-    module type S1_with_creators = S1_with_creators [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
   end
 
   type ('t, 'a : any, 'acc : any) fold =
@@ -842,7 +901,8 @@ module Definitions = struct
     val sum
       : 't ('a : k) ('sum : k).
       fold:(('t, 'a, 'sum) fold[@mode mi mo])
-      -> ((module Summable with type t = 'sum)[@kind.explicit k] [@mode mo])
+      -> ((module Summable with type t = 'sum)
+         [@kind.explicit k or value_or_null] [@mode mo])
       -> 't @ mi
       -> f:('a @ mi -> 'sum @ mo) @ local
       -> 'sum @ mo

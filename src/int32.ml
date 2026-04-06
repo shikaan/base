@@ -3,14 +3,21 @@ open! Stdlib.Int32
 module Sexp = Sexp0
 
 module T = struct
-  type t = int32 [@@deriving globalize, hash, sexp ~stackify, sexp_grammar]
+  module T0 = struct
+    type t = int32 [@@deriving globalize, hash, of_sexp, sexp_grammar]
 
-  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
-  let compare (x : t) y = compare x y
+    let%template[@alloc a = (heap, stack)] to_string =
+      (Integer_to_string.int32_to_string [@alloc a])
+    ;;
+  end
+
+  include T0
+  include Int_string_conversions.Make (T0)
 
   external format : string -> local_ int32 -> string @@ portable = "caml_int32_format"
 
-  let to_string = Integer_to_string.int32_to_string
+  let hashable : t Hashable.t = { hash; compare; sexp_of_t }
+  let compare (x : t) y = compare x y
 
   external of_string
     :  local_ string

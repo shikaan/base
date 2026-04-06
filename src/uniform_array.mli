@@ -12,13 +12,13 @@ open! Import
 
 (** See [Base.Array] for comments. *)
 type ('a : value_or_null) t : mutable_data with 'a
-[@@deriving sexp, sexp_grammar, compare ~localize]
+[@@deriving sexp ~stackify, sexp_grammar, compare ~localize]
 
 val invariant : ('a : value_or_null). 'a t -> unit
 val empty : ('a : value_or_null). 'a t
 
 (** For obtaining uncontended access to [empty] from a portable function. *)
-val get_empty : unit -> _ t
+val get_empty : ('a : value_or_null). unit -> 'a t
 
 val create : ('a : value_or_null). len:int -> 'a -> 'a t
 val singleton : ('a : value_or_null). 'a -> 'a t
@@ -81,7 +81,8 @@ val of_list : ('a : value_or_null). 'a list -> 'a t
 val of_list_rev : ('a : value_or_null). 'a list -> 'a t
 val to_list : ('a : value_or_null). 'a t -> 'a list
 
-include Blit.S1 with type 'a t := 'a t
+include%template
+  Blit.S1 [@kind.explicit value_or_null] with type ('a : value_or_null) t := 'a t
 
 val copy : ('a : value_or_null). 'a t -> 'a t
 val exists : ('a : value_or_null). 'a t -> f:local_ ('a -> bool) -> bool

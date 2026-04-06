@@ -8,11 +8,10 @@ module Definitions = struct
 
   (** @canonical Base.Hashtbl.Key *)
   module Key = struct
-    [@@@kind.default k = (additional, value)]
     [@@@mode.default m = (local, global), p = (nonportable, portable)]
 
     module type S = sig @@ p
-      type t : k [@@deriving sexp_of]
+      type t : any [@@deriving sexp_of]
 
       val compare : t @ m -> t @ m -> int [@@mode m = (global, m)]
 
@@ -21,7 +20,7 @@ module Definitions = struct
       val hash : t -> int
     end
 
-    type ('a : k) t = ((module S with type t = 'a)[@kind k] [@mode m p])
+    type ('a : any) t = ((module S with type t = 'a)[@mode m p])
   end
 
   module Merge_into_action = Dictionary_mutable.Merge_into_action
@@ -172,7 +171,7 @@ module Definitions = struct
   type ('key, 'data, 'z) create_options =
     ?growth_allowed:bool (** defaults to [true] *)
     -> ?size:int (** initial size -- default 0 *)
-    -> 'key Key.t
+    -> 'key Key.t @ immutable
     -> 'z
 
   type ('key, 'data, 'z) create_options_without_first_class_module =
@@ -215,7 +214,7 @@ module Definitions = struct
       : ('a : value mod p) ('b : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> ('a, 'b) t @ p
 
     (** Example:
@@ -228,7 +227,7 @@ module Definitions = struct
       : ('a : value mod p) ('b : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> ('a * 'b) list
       -> [ `Ok of ('a, 'b) t | `Duplicate_key of 'a ] @ p
 
@@ -249,7 +248,7 @@ module Definitions = struct
       : ('a : value mod p) ('b : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> ('a * 'b) list
       -> [ `Ok of ('a, 'b) t | `Duplicate_keys of 'a list ] @ p
 
@@ -257,7 +256,7 @@ module Definitions = struct
       : ('a : value mod c p) ('b : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> ('a * 'b) list
       -> ('a, 'b) t Or_error.t @ p
 
@@ -265,7 +264,7 @@ module Definitions = struct
       : ('a : value mod c p) ('b : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> ('a * 'b) list
       -> ('a, 'b) t @ p
 
@@ -285,7 +284,7 @@ module Definitions = struct
       : ('a : value mod p) ('b : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> ('a * 'b) list
       -> ('a, 'b list) t @ p
 
@@ -319,7 +318,7 @@ module Definitions = struct
       : ('a : value mod p) ('b : value mod p) 'r.
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> get_key:local_ ('r -> 'a)
       -> get_data:local_ ('r -> 'b)
       -> 'r list
@@ -333,7 +332,7 @@ module Definitions = struct
       : ('a : value mod p) ('r : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> get_key:local_ ('r -> 'a)
       -> 'r list
       -> [ `Ok of ('a, 'r) t | `Duplicate_keys of 'a list ] @ p
@@ -342,7 +341,7 @@ module Definitions = struct
       : ('a : value mod p) ('r : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> get_key:local_ ('r -> 'a)
       -> 'r list
       -> ('a, 'r) t Or_error.t @ p
@@ -351,7 +350,7 @@ module Definitions = struct
       : ('a : value mod p) ('r : value mod p).
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> get_key:local_ ('r -> 'a)
       -> 'r list
       -> ('a, 'r) t @ p
@@ -377,7 +376,7 @@ module Definitions = struct
       : ('a : value mod p) ('b : value mod p) 'r.
       ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> ('a Key.t[@mode p])
+      -> ('a Key.t[@mode p]) @ immutable
       -> get_key:local_ ('r -> 'a)
       -> get_data:local_ ('r -> 'b)
       -> combine:local_ ('b -> 'b -> 'b)
@@ -481,50 +480,67 @@ module Definitions = struct
       type (!'a : k, !'b : v) t : value mod non_float
       [@@deriving sexp_of] [@@kind k = all, v = all]
 
+      (*_ Unmangled [t] is shadowed below, so define [t] with explicit mangling. *)
+      type (!'a : k, !'b : v) t := (('a, 'b) t[@kind k v])
+      [@@kind.explicit k = all, v = all]
+
       [@@@kind k = all, v = all]
 
-      type (!'a : k, !'b : v) t := (('a, 'b) t[@kind k v])
-      type 'a key := ('a Key.t[@kind k] [@mode p]) [@@mode p = (nonportable, portable)]
+      type (!'a : k, !'b : v) t := (('a, 'b) t[@kind.explicit k v])
+      type ('a : k) key := ('a Key.t[@mode p]) [@@mode p = (nonportable, portable)]
 
       [@@@kind.default k v]
+      [@@@kind k_create = k mod non_null separable]
 
       val create
-        :  ?growth_allowed:bool (** defaults to [true] *)
+        : ('a : k_create mod p) ('b : v mod p).
+        ?growth_allowed:bool (** defaults to [true] *)
         -> ?size:int (** initial size -- default 0 *)
-        -> ('a key[@mode p]) @ p
-        -> ('a : k mod p, 'b : v mod p) t @ p
+        -> ('a key[@mode p]) @ immutable p
+        -> ('a, 'b) t @ p
       [@@mode p = (nonportable, portable)]
 
       val singleton
-        :  ?growth_allowed:bool
+        : ('k : k_create mod p) ('v : v mod p).
+        ?growth_allowed:bool
         -> ?size:int
-        -> ('k key[@mode p]) @ p
+        -> ('k key[@mode p]) @ immutable p
         -> 'k
         -> 'v
-        -> ('k : k mod p, 'v : v mod p) t @ p
+        -> ('k, 'v) t @ p
       [@@mode p = (nonportable, portable)]
 
-      val length : ('k, 'v) t @ c -> int [@@mode c = (uncontended, shared)]
-      val capacity : ('k, 'v) t @ c -> int [@@mode c = (uncontended, shared)]
-      val growth_allowed : ('k, 'v) t @ c -> bool [@@mode c = (uncontended, contended)]
-      val is_empty : ('k, 'v) t @ c -> bool [@@mode c = (uncontended, shared)]
-      val add_exn : ('k, 'v) t -> key:'k -> data:'v -> unit
-      val add : ('k, 'v) t -> key:'k -> data:'v -> [ `Ok | `Duplicate ]
+      val length : ('k : k) ('v : v). ('k, 'v) t @ c -> int
+      [@@mode c = (uncontended, shared)]
 
-      val find : ('k : k mod c, 'v) t @ c -> 'k -> ('v Option.t[@kind v]) @ c
+      val capacity : ('k : k) ('v : v). ('k, 'v) t @ c -> int
+      [@@mode c = (uncontended, shared)]
+
+      val growth_allowed : ('k : k) ('v : v). ('k, 'v) t @ c -> bool
+      [@@mode c = (uncontended, contended)]
+
+      val is_empty : ('k : k) ('v : v). ('k, 'v) t @ c -> bool
+      [@@mode c = (uncontended, shared)]
+
+      val add_exn : ('k : k) ('v : v). ('k, 'v) t -> key:'k -> data:'v -> unit
+      val add : ('k : k) ('v : v). ('k, 'v) t -> key:'k -> data:'v -> [ `Ok | `Duplicate ]
+
+      val find
+        : ('k : k mod c) ('v : v).
+        ('k, 'v) t @ c -> 'k -> ('v Option.t[@kind v]) @ c
       [@@mode c = (uncontended, shared)]
 
       val find_exn : ('k : k mod c) ('v : v). ('k, 'v) t @ c -> 'k -> 'v @ c
       [@@mode c = (uncontended, shared)]
 
-      val find_and_remove : ('k, 'v) t -> 'k -> ('v Option.t[@kind v])
-      val remove : ('k, 'v) t -> 'k -> unit
+      val find_and_remove : ('k : k) ('v : v). ('k, 'v) t -> 'k -> ('v Option.t[@kind v])
+      val remove : ('k : k) ('v : v). ('k, 'v) t -> 'k -> unit
 
       val mem : ('k : k mod c) ('v : v). ('k, 'v) t @ c -> 'k -> bool
       [@@mode c = (uncontended, shared)]
 
-      val set : ('k, 'v) t -> key:'k -> data:'v -> unit
-      val clear : _ t -> unit
+      val set : ('k : k) ('v : v). ('k, 'v) t -> key:'k -> data:'v -> unit
+      val clear : ('k : k) ('v : v). ('k, 'v) t -> unit
 
       val find_and_call
         : ('k : k mod c) ('v : v) ('a : r).
@@ -545,13 +561,37 @@ module Definitions = struct
         -> 'r
       [@@kind k = k, v = v, a = all, r = all] [@@mode c = (uncontended, shared)]
 
-      val update : ('k, 'v) t -> 'k -> f:local_ (('v Option.t[@kind v]) -> 'v) -> unit
+      val update
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> 'k -> f:local_ (('v Option.t[@kind v]) -> 'v) -> unit
 
       val update_and_return
-        :  ('k, 'v) t
-        -> 'k
-        -> f:local_ (('v Option.t[@kind v]) -> 'v)
-        -> 'v
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> 'k -> f:local_ (('v Option.t[@kind v]) -> 'v) -> 'v
+
+      val filter_inplace : ('k : k) ('v : v). ('k, 'v) t -> f:('v -> bool) @ local -> unit
+
+      val filteri_inplace
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> f:(key:'k -> data:'v -> bool) @ local -> unit
+
+      val filter_keys_inplace
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> f:('k -> bool) @ local -> unit
+
+      val mapi_inplace
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> f:(key:'k -> data:'v -> 'v) @ local -> unit
+
+      val map_inplace : ('k : k) ('v : v). ('k, 'v) t -> f:('v -> 'v) @ local -> unit
+
+      val filter_map_inplace
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> f:('v -> ('v Option.t[@kind v])) @ local -> unit
+
+      val filter_mapi_inplace
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> f:(key:'k -> data:'v -> ('v Option.t[@kind v])) @ local -> unit
 
       val change
         :  ('k, 'v) t
@@ -570,45 +610,66 @@ module Definitions = struct
       val iter : ('k : k) ('v : v). ('k, 'v) t @ c l -> f:local_ ('v @ c -> unit) -> unit
       [@@mode l = (global, local)] [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
+      val iter_keys
+        : ('k : k) ('v : v).
+        ('k, 'v) t @ c l -> f:local_ ('k @ c -> unit) -> unit
+      [@@mode l = (global, local)] [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
+
       val iteri
         : ('k : k) ('v : v).
         ('k, 'v) t @ c l -> f:local_ (key:'k @ c -> data:'v @ c -> unit) -> unit
       [@@mode l = (global, local)] [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
-      val find_or_add : ('k, 'v) t -> 'k -> default:local_ (unit -> 'v) -> 'v
-      val findi_or_add : ('k, 'v) t -> 'k -> default:local_ ('k -> 'v) -> 'v
+      val find_or_add
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> 'k -> default:local_ (unit -> 'v) -> 'v
 
-      val keys : ('k, 'v) t @ c -> ('k List.t[@kind k]) @ c
+      val findi_or_add
+        : ('k : k) ('v : v).
+        ('k, 'v) t -> 'k -> default:local_ ('k -> 'v) -> 'v
+
+      val keys : ('k : k) ('v : v). ('k, 'v) t @ c -> ('k List.t[@kind k]) @ c
       [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
-      val data : ('k, 'v) t @ c -> ('v List.t[@kind v]) @ c
+      val data : ('k : k) ('v : v). ('k, 'v) t @ c -> ('v List.t[@kind v]) @ c
       [@@synchro __ @ c = (unsync_uncontended, sync_shared)]
 
-      val choose_exn : ('k, 'v) t @ c -> #('k * 'v) @ c [@@mode c = (uncontended, shared)]
+      val choose_exn : ('k : k) ('v : v). ('k, 'v) t @ c -> #('k * 'v) @ c
+      [@@mode c = (uncontended, shared)]
+
+      val invariant
+        : ('k : k) ('v : v).
+        ('k -> unit) -> ('v -> unit) -> ('k, 'v) t -> unit
     end
 
     include sig
       [@@@kind.default k = all, v = all]
 
       val add_multi
-        :  (('k, ('v List.t[@kind v])) t[@kind k value_or_null])
-        -> key:'k
-        -> data:'v
-        -> unit
+        : ('k : k) ('v : v).
+        (('k, ('v List.t[@kind v])) t[@kind k value_or_null]) -> key:'k -> data:'v -> unit
 
       val remove_multi
-        :  (('k, ('v List.t[@kind v])) t[@kind k value_or_null])
-        -> 'k
-        -> unit
+        : ('k : k) ('v : v).
+        (('k, ('v List.t[@kind v])) t[@kind k value_or_null]) -> 'k -> unit
 
       val find_multi
-        :  (('k : k mod c, ('v List.t[@kind v])) t[@kind k value_or_null]) @ c
+        : ('k : k mod c) ('v : v).
+        (('k, ('v List.t[@kind v])) t[@kind k value_or_null]) @ c
         -> 'k
         -> ('v List.t[@kind v]) @ c
       [@@mode c = (uncontended, shared)]
 
-      val map : (('k, 'v) t[@kind k v]) -> f:local_ ('v -> 'w) -> (('k, 'w) t[@kind k v'])
+      val map
+        : ('k : k) ('v : v) ('w : v').
+        (('k, 'v) t[@kind k v]) -> f:local_ ('v -> 'w) -> (('k, 'w) t[@kind k v'])
       [@@kind k = k, v = v, v' = all]
+    end
+
+    include sig
+      val to_alist
+        : ('k : value_or_null) ('v : value_or_null).
+        ('k, 'v) t -> ('k * 'v) list
     end
   end
 

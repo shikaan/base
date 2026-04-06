@@ -368,10 +368,11 @@ module Definitions = struct
         -> (('a, 'b) Either0.t[@local_opt])
         = "%identity"
 
-      external unwrap_first__portable
+      external%template unwrap_first
         :  (('a t, 'b) Either0.t[@local_opt]) @ portable
         -> (('a, 'b) Either0.t[@local_opt]) @ portable
         = "%identity"
+      [@@mode portable]
 
       (** Wrapping and unwrapping [Either.Second]. *)
 
@@ -385,10 +386,11 @@ module Definitions = struct
         -> (('a, 'b) Either0.t[@local_opt])
         = "%identity"
 
-      external unwrap_second__portable
+      external%template unwrap_second
         :  (('a, 'b t) Either0.t[@local_opt]) @ portable
         -> (('a, 'b) Either0.t[@local_opt]) @ portable
         = "%identity"
+      [@@mode portable]
 
       (** Wrapping and unwrapping [Result]. *)
 
@@ -426,10 +428,11 @@ module Definitions = struct
         -> (('a, 'b) Result.t[@local_opt])
         = "%identity"
 
-      external unwrap_ok__portable
+      external%template unwrap_ok
         :  (('a t, 'b) Result.t[@local_opt]) @ portable
         -> (('a, 'b) Result.t[@local_opt]) @ portable
         = "%identity"
+      [@@mode portable]
 
       (** Wrapping and unwrapping [Result.Error]. *)
 
@@ -443,10 +446,11 @@ module Definitions = struct
         -> (('a, 'b) Result.t[@local_opt])
         = "%identity"
 
-      external unwrap_error__portable
+      external%template unwrap_error
         :  (('a, 'b t) Result.t[@local_opt]) @ portable
         -> (('a, 'b) Result.t[@local_opt]) @ portable
         = "%identity"
+      [@@mode portable]
 
       (** Wrapping and unwrapping two-tuples. *)
 
@@ -493,10 +497,20 @@ module Definitions = struct
         [ `global
         | `local of actually_local
         ]
-      [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+      [@@deriving
+        compare ~localize
+        , equal ~localize
+        , hash
+        , sexp_of ~localize ~stackify
+        , sexp_grammar]
 
       type global = [ `global ]
-      [@@deriving compare ~localize, equal ~localize, hash, sexp_of, sexp_grammar]
+      [@@deriving
+        compare ~localize
+        , equal ~localize
+        , hash
+        , sexp_of ~localize ~stackify
+        , sexp_grammar]
 
       type (+'a, 'locality) t
       [@@deriving
@@ -585,9 +599,9 @@ module type Modes = sig @@ portable
   [@@modality
     g = (local, global)
     , p = (nonportable, portable)
-    , c = (uncontended, shared, contended)
+    , c = (uncontended, shared, contended, read, immutable)
     , m = (once, many)]
-  [@@kind k = base_or_null]
+  [@@kind k = (base_or_null, (value_or_null & bits64) & word)]
 
   (** Wrap values in the [global_] mode, even in a [local_] context. *)
   module Global : sig

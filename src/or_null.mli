@@ -188,6 +188,8 @@ module Local : sig
   end
 end
 
+include Invariant.S1 with type 'a t := 'a t
+
 (** Be very careful -- [unsafe_value] is particularly unsafe. This should only be used in
     [match%optional] syntax. *)
 module Optional_syntax : sig
@@ -196,3 +198,5 @@ module Optional_syntax : sig
     val unsafe_value : 'a t -> 'a [@@zero_alloc]
   end
 end
+
+module Export = Basement.Or_null_shim.Export

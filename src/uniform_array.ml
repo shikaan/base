@@ -386,14 +386,11 @@ let t_sexp_grammar (type elt : value_or_null) (grammar : elt Sexplib0.Sexp_gramm
   Sexplib0.Sexp_grammar.coerce (list_sexp_grammar grammar)
 ;;
 
-(* Copied from the implementation of [sexp_of_array]. We can't reuse the array conversion
-   functions directly because [or_null array]s are forbidden. *)
-let sexp_of_t sexp_of__a t =
-  let lst_ref = ref [] in
-  for i = length t - 1 downto 0 do
-    lst_ref := sexp_of__a (unsafe_get t i) :: !lst_ref
-  done;
-  Sexp.List !lst_ref
+let%template[@alloc a = (heap, stack)] sexp_of_t sexp_of__a t =
+  Sexp.List
+    ((List.init [@alloc a]) (length t) ~f:(fun i ->
+       sexp_of__a (unsafe_get t i) [@exclave_if_stack a]))
+  [@exclave_if_stack a]
 ;;
 
 let t_of_sexp a__of_sexp sexp =
@@ -412,8 +409,8 @@ let t_of_sexp a__of_sexp sexp =
   | Atom _ -> of_sexp_error "Uniform_array.t_of_sexp: list needed" sexp
 ;;
 
-include%template Blit.Make1 [@modality portable] (struct
-    type nonrec 'a t = 'a t
+include%template Blit.Make1 [@modality portable] [@kind.explicit value_or_null] (struct
+    type nonrec ('a : value_or_null) t = 'a t
 
     let length = length
 
@@ -433,7 +430,7 @@ let max_elt t ~compare = Container.max_elt ~fold t ~compare
 
 (* This is the same as the ppx_compare [compare_array] but uses our [unsafe_get] and
    [length]. *)
-let compare__local compare_elt a b =
+let%template[@mode local] compare compare_elt a b =
   if phys_equal a b
   then 0
   else (
@@ -455,10 +452,10 @@ let compare__local compare_elt a b =
       loop 0 [@nontail]))
 ;;
 
-let compare compare_elt a b = compare__local compare_elt a b
+let%template compare compare_elt a b = (compare [@mode local]) compare_elt a b
 
 module%template Sort = Array.Private.Sorter [@modality portable] (struct
-    type nonrec 'a t = 'a t
+    type nonrec ('a : value_or_null) t = 'a t
 
     let length = length
     let get t i = unsafe_get t i

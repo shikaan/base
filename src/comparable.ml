@@ -7,7 +7,7 @@ include Comparable_intf.Definitions
 
 module With_zero (T : sig
   @@ p
-    type t : value mod c [@@deriving compare [@mode m]]
+    type t : value mod c [@@deriving compare [@mode.explicit m]]
 
     val zero : t
   end) =
@@ -87,7 +87,7 @@ let max cmp t t' =
 [@@@mode.default m = (local, global)]
 
 module%template.portable Infix (T : sig
-    type t [@@deriving compare [@mode m]]
+    type t [@@deriving compare [@mode.explicit m]]
   end) : Infix with type t := T.t = struct
   let ( > ) a b = gt T.compare a b
   let ( < ) a b = lt T.compare a b
@@ -100,7 +100,7 @@ end
 
 module%template.portable
   [@modality p] Comparisons (T : sig
-    type t [@@deriving compare [@mode m]]
+    type t [@@deriving compare [@mode.explicit m]]
   end) : Comparisons [@mode m] with type t := T.t = struct
   include Infix [@mode m] [@modality p] (T)
 
@@ -156,7 +156,7 @@ end
 
 module%template.portable
   [@modality p] Make (T : sig
-    type t [@@deriving (compare [@mode m]), sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
   end) =
 Make_using_comparator [@inlined hint] [@modality p] [@mode m] (struct
     include T
@@ -166,7 +166,7 @@ Make_using_comparator [@inlined hint] [@modality p] [@mode m] (struct
 module%template.portable
   [@modality p] Inherit
     (C : sig
-       type t [@@deriving compare [@mode m]]
+       type t [@@deriving compare [@mode.explicit m]]
      end)
     (T : sig
        type t [@@deriving sexp_of]

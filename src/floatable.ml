@@ -2,12 +2,15 @@
 
 open! Import
 
-module type S = sig
+[%%template
+[@@@modality.default p = (nonportable, portable)]
+
+module type S = sig @@ p
   type t
 
   val of_float : float -> t
   val to_float : t -> float
-end
+end]
 
 module type S_local_input = sig
   type t

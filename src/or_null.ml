@@ -296,3 +296,7 @@ module Local = struct
     end
   end
 end
+
+let[@inline] invariant invariant_a = iter ~f:invariant_a
+
+module Export = Basement.Or_null_shim.Export

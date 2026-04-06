@@ -94,25 +94,25 @@ module%test _ : module type of Avltree = struct
       end
     end
 
-    module [@kind value_or_null] Key = Int
-    module [@kind bits64] Key = Int64
-    module [@kind float64] Key = Float
-    module [@kind value_or_null] Data = String
-    module [@kind bits64] Data = Int64
-    module [@kind float64] Data = Float
+    module [@kind.explicit value_or_null] Key = Int
+    module [@kind.explicit bits64] Key = Int64
+    module [@kind.explicit float64] Key = Float
+    module [@kind.explicit value_or_null] Data = String
+    module [@kind.explicit bits64] Data = Int64
+    module [@kind.explicit float64] Data = Float
 
     [@@@kind.default
       k = (value_or_null, bits64, float64), v = (value_or_null, bits64, float64)]
 
     open struct
-      module Key = Key [@kind k]
+      module Key = Key [@kind.explicit k]
 
       let compare = Key.compare_unboxed
 
-      module Data = Data [@kind v]
+      module Data = Data [@kind.explicit v]
     end
 
-    module Constructor = struct
+    module [@kind.explicit k v] Constructor = struct
       type t =
         | Add of Key.t * Data.t
         | Replace of Key.t * Data.t
@@ -150,10 +150,10 @@ module%test _ : module type of Avltree = struct
     end
 
     open struct
-      module Constructor = Constructor [@kind k v]
+      module Constructor = Constructor [@kind.explicit k v]
     end
 
-    module Constructors = struct
+    module [@kind.explicit k v] Constructors = struct
       type t = Constructor.t list [@@deriving quickcheck, sexp_of]
     end
 
@@ -189,378 +189,386 @@ module%test _ : module type of Avltree = struct
 
   open For_quickcheck
 
-  [%%template
-  [@@@kind.default
-    k = (value_or_null, bits64, float64), v = (value_or_null, bits64, float64)]
+  include struct
+    [%%template
+    [@@@kind.default
+      k = (value_or_null, bits64, float64), v = (value_or_null, bits64, float64)]
 
-  type ('k : k, 'v : v) t = (('k, 'v) Avltree.t[@kind k v]) = private
-    | Empty
-    | Node of
-        { mutable left : (('k, 'v) t[@kind k v])
-        ; key : 'k
-        ; mutable value : 'v
-        ; mutable height : int
-        ; mutable right : (('k, 'v) t[@kind k v])
-        }
-    | Leaf of
-        { key : 'k
-        ; mutable value : 'v
-        }
+    type ('k : k, 'v : v) t = (('k, 'v) Avltree.t[@kind k v]) = private
+      | Empty
+      | Node of
+          { mutable left : (('k, 'v) t[@kind k v])
+          ; key : 'k
+          ; mutable value : 'v
+          ; mutable height : int
+          ; mutable right : (('k, 'v) t[@kind k v])
+          }
+      | Leaf of
+          { key : 'k
+          ; mutable value : 'v
+          }
 
-  open struct
-    module Key = Key [@kind k]
+    open struct
+      module Key = Key [@kind.explicit k]
 
-    let compare = Key.compare_unboxed
+      let compare = Key.compare_unboxed
 
-    module Data = Data [@kind v]
-    module Constructor = Constructor [@kind k v]
-    module Constructors = Constructors [@kind k v]
-  end
+      module Data = Data [@kind.explicit v]
+      module Constructor = Constructor [@kind.explicit k v]
+      module Constructors = Constructors [@kind.explicit k v]
+    end
 
-  let empty = (empty [@kind k v])
-  let get_empty = (get_empty [@kind k v])
+    let empty = (empty [@kind k v])
+    let get_empty = (get_empty [@kind k v])
 
-  let%test_unit _ =
-    match (empty [@kind k v]), (get_empty [@kind k v]) () with
-    | Empty, Empty -> ()
-    | _ -> assert false
-  ;;
+    let%test_unit _ =
+      match (empty [@kind k v]), (get_empty [@kind k v]) () with
+      | Empty, Empty -> ()
+      | _ -> assert false
+    ;;
 
-  let is_empty = (is_empty [@kind k v])
-  let%test _ = (is_empty [@kind k v]) (empty [@kind k v])
+    let is_empty = (is_empty [@kind k v])
+    let%test _ = (is_empty [@kind k v]) (empty [@kind k v])
 
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
-      let t, map = (reify [@kind k v]) constructors in
-      [%test_result: bool] ((is_empty [@kind k v]) t) ~expect:(Map.is_empty map))
-  ;;
-
-  let invariant = (invariant [@kind k v])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
-      let t, map = (reify [@kind k v]) constructors in
-      (invariant [@kind k v]) t ~compare;
-      [%test_result: Data.t Map.M(Key).t] ((to_map [@kind k v]) t) ~expect:map)
-  ;;
-
-  let add = (add [@kind k v])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructor.t list * Key.t * Data.t * bool
-        [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key, data, replace) ->
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
         let t, map = (reify [@kind k v]) constructors in
-        (* test [added], other aspects of [add] are tested via [reify] in the [invariant]
-           test above *)
-        let added = ref false in
-        let (_ : (_ t[@kind k v])) =
-          (add [@kind k v])
-            t
-            ~key:(Key.unbox key)
-            ~data:(Data.unbox data)
-            ~compare
-            ~added
-            ~replace
-        in
-        [%test_result: bool] !added ~expect:(not (Map.mem map key)))
-  ;;
+        [%test_result: bool] ((is_empty [@kind k v]) t) ~expect:(Map.is_empty map))
+    ;;
 
-  let remove = (remove [@kind k v])
+    let invariant = (invariant [@kind k v])
 
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key) ->
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
         let t, map = (reify [@kind k v]) constructors in
-        (* test [removed], other aspects of [remove] are tested via [reify] in the
-           [invariant] test above *)
-        let removed = ref false in
-        let (_ : (_ t[@kind k v])) =
-          (remove [@kind k v]) t (Key.unbox key) ~compare ~removed
-        in
-        [%test_result: bool] !removed ~expect:(Map.mem map key))
-  ;;
+        (invariant [@kind k v]) t ~compare;
+        [%test_result: Data.t Map.M(Key).t] ((to_map [@kind k v]) t) ~expect:map)
+    ;;
 
-  let find = (find [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+    let add = (add [@kind k v])
 
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key) ->
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructor.t list * Key.t * Data.t * bool
+          [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key, data, replace) ->
+          let t, map = (reify [@kind k v]) constructors in
+          (* test [added], other aspects of [add] are tested via [reify] in the
+             [invariant] test above *)
+          let added = ref false in
+          let (_ : (_ t[@kind k v])) =
+            (add [@kind k v])
+              t
+              ~key:(Key.unbox key)
+              ~data:(Data.unbox data)
+              ~compare
+              ~added
+              ~replace
+          in
+          [%test_result: bool] !added ~expect:(not (Map.mem map key)))
+    ;;
+
+    let remove = (remove [@kind k v])
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key) ->
+          let t, map = (reify [@kind k v]) constructors in
+          (* test [removed], other aspects of [remove] are tested via [reify] in the
+             [invariant] test above *)
+          let removed = ref false in
+          let (_ : (_ t[@kind k v])) =
+            (remove [@kind k v]) t (Key.unbox key) ~compare ~removed
+          in
+          [%test_result: bool] !removed ~expect:(Map.mem map key))
+    ;;
+
+    let find = (find [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result: Data.t option]
+            ((Option.map [@kind v value_or_null])
+               ((find [@kind k v]) t (Key.unbox key) ~compare)
+               ~f:Data.box)
+            ~expect:(Map.find map key))
+    ;;
+
+    let mem = (mem [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result: bool]
+            ((mem [@kind k v]) t (Key.unbox key) ~compare)
+            ~expect:(Map.mem map key))
+    ;;
+
+    let find_and_call = (find_and_call [@kind k v r] [@mode c])
+    [@@kind
+      k = (value_or_null, bits64, float64)
+      , v = (value_or_null, bits64, float64)
+      , r = (value_or_null, bits64, float64)]
+    [@@mode c = (uncontended, shared)]
+    ;;
+
+    let find_and_call = (find_and_call [@kind k v value_or_null])
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result: [ `Found of Data.t | `Not_found of Key.t ]]
+            ((find_and_call [@kind k v])
+               t
+               (Key.unbox key)
+               ~compare
+               ~if_found:(fun data -> `Found (Data.box data))
+               ~if_not_found:(fun key -> `Not_found (Key.box key)))
+            ~expect:
+              (match Map.find map key with
+               | None -> `Not_found key
+               | Some data -> `Found data))
+    ;;
+
+    let findi_and_call = (findi_and_call [@kind k v r] [@mode c])
+    [@@kind
+      k = (value_or_null, bits64, float64)
+      , v = (value_or_null, bits64, float64)
+      , r = (value_or_null, bits64, float64)]
+    [@@mode c = (uncontended, shared)]
+    ;;
+
+    let findi_and_call = (findi_and_call [@kind k v value_or_null])
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result: [ `Found of Key.t * Data.t | `Not_found of Key.t ]]
+            ((findi_and_call [@kind k v])
+               t
+               (Key.unbox key)
+               ~compare
+               ~if_found:(fun ~key ~data -> `Found (Key.box key, Data.box data))
+               ~if_not_found:(fun key -> `Not_found (Key.box key)))
+            ~expect:
+              (match Map.find map key with
+               | None -> `Not_found key
+               | Some data -> `Found (key, data)))
+    ;;
+
+    let find_and_call1 = (find_and_call1 [@kind k v a r] [@mode c])
+    [@@kind
+      k = (value_or_null, bits64, float64)
+      , v = (value_or_null, bits64, float64)
+      , a = (value_or_null, bits64, float64)
+      , r = (value_or_null, bits64, float64)]
+    [@@mode c = (uncontended, shared)]
+    ;;
+
+    let find_and_call1 = (find_and_call1 [@kind k v value_or_null value_or_null])
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t * int [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key, a) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result: [ `Found of Data.t * int | `Not_found of Key.t * int ]]
+            ((find_and_call1 [@kind k v])
+               t
+               (Key.unbox key)
+               ~compare
+               ~a
+               ~if_found:(fun data a -> `Found (Data.box data, a))
+               ~if_not_found:(fun key a -> `Not_found (Key.box key, a)))
+            ~expect:
+              (match Map.find map key with
+               | None -> `Not_found (key, a)
+               | Some data -> `Found (data, a)))
+    ;;
+
+    let findi_and_call1 = (findi_and_call1 [@kind k v a r] [@mode c])
+    [@@kind
+      k = (value_or_null, bits64, float64)
+      , v = (value_or_null, bits64, float64)
+      , a = (value_or_null, bits64, float64)
+      , r = (value_or_null, bits64, float64)]
+    [@@mode c = (uncontended, shared)]
+    ;;
+
+    let findi_and_call1 = (findi_and_call1 [@kind k v value_or_null value_or_null])
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t * int [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key, a) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result: [ `Found of Key.t * Data.t * int | `Not_found of Key.t * int ]]
+            ((findi_and_call1 [@kind k v])
+               t
+               (Key.unbox key)
+               ~compare
+               ~a
+               ~if_found:(fun ~key ~data a -> `Found (Key.box key, Data.box data, a))
+               ~if_not_found:(fun key a -> `Not_found (Key.box key, a)))
+            ~expect:
+              (match Map.find map key with
+               | None -> `Not_found (key, a)
+               | Some data -> `Found (key, data, a)))
+    ;;
+
+    let find_and_call2 = (find_and_call2 [@kind k v a b r] [@mode c])
+    [@@kind
+      k = (value_or_null, bits64, float64)
+      , v = (value_or_null, bits64, float64)
+      , a = (value_or_null, bits64, float64)
+      , b = (value_or_null, bits64, float64)
+      , r = (value_or_null, bits64, float64)]
+    [@@mode c = (uncontended, shared)]
+    ;;
+
+    let find_and_call2 =
+      (find_and_call2 [@kind k v value_or_null value_or_null value_or_null])
+    ;;
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t * int * string [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key, a, b) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result:
+            [ `Found of Data.t * int * string | `Not_found of Key.t * int * string ]]
+            ((find_and_call2 [@kind k v])
+               t
+               (Key.unbox key)
+               ~compare
+               ~a
+               ~b
+               ~if_found:(fun data a b -> `Found (Data.box data, a, b))
+               ~if_not_found:(fun key a b -> `Not_found (Key.box key, a, b)))
+            ~expect:
+              (match Map.find map key with
+               | None -> `Not_found (key, a, b)
+               | Some data -> `Found (data, a, b)))
+    ;;
+
+    let findi_and_call2 = (findi_and_call2 [@kind k v a b r] [@mode c])
+    [@@kind
+      k = (value_or_null, bits64, float64)
+      , v = (value_or_null, bits64, float64)
+      , a = (value_or_null, bits64, float64)
+      , b = (value_or_null, bits64, float64)
+      , r = (value_or_null, bits64, float64)]
+    [@@mode c = (uncontended, shared)]
+    ;;
+
+    let findi_and_call2 =
+      (findi_and_call2 [@kind k v value_or_null value_or_null value_or_null])
+    ;;
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn
+        (module struct
+          type t = Constructors.t * Key.t * int * string [@@deriving quickcheck, sexp_of]
+        end)
+        ~f:(fun (constructors, key, a, b) ->
+          let t, map = (reify [@kind k v]) constructors in
+          [%test_result:
+            [ `Found of Key.t * Data.t * int * string
+            | `Not_found of Key.t * int * string
+            ]]
+            ((findi_and_call2 [@kind k v])
+               t
+               (Key.unbox key)
+               ~compare
+               ~a
+               ~b
+               ~if_found:(fun ~key ~data a b -> `Found (Key.box key, Data.box data, a, b))
+               ~if_not_found:(fun key a b -> `Not_found (Key.box key, a, b)))
+            ~expect:
+              (match Map.find map key with
+               | None -> `Not_found (key, a, b)
+               | Some data -> `Found (key, data, a, b)))
+    ;;
+
+    let iter = (iter [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
         let t, map = (reify [@kind k v]) constructors in
-        [%test_result: Data.t option]
-          ((Option.map [@kind v value_or_null])
-             ((find [@kind k v]) t (Key.unbox key) ~compare)
-             ~f:Data.box)
-          ~expect:(Map.find map key))
-  ;;
+        [%test_result: (Key.t * Data.t) list]
+          (let q = Queue.create () in
+           (iter [@kind k v]) t ~f:(fun ~key ~data ->
+             Queue.enqueue q (Key.box key, Data.box data));
+           Queue.to_list q)
+          ~expect:(Map.to_alist map))
+    ;;
 
-  let mem = (mem [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+    let mapi_inplace = (mapi_inplace [@kind k v])
 
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key) ->
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
+        let t, map = (reify [@kind k v]) constructors in
+        [%test_result: (Key.t * Data.t) list]
+          ((mapi_inplace [@kind k v]) t ~f:(fun ~key:_ ~data -> Data.map_unboxed data);
+           (fold [@kind k v]) t ~init:[] ~f:(fun ~key ~data acc ->
+             (Key.box key, Data.box data) :: acc))
+          ~expect:(Map.map map ~f:Data.map |> Map.to_alist |> List.rev))
+    ;;
+
+    let fold = (fold [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
+        let t, map = (reify [@kind k v]) constructors in
+        [%test_result: (Key.t * Data.t) list]
+          ((fold [@kind k v]) t ~init:[] ~f:(fun ~key ~data acc ->
+             (Key.box key, Data.box data) :: acc))
+          ~expect:(Map.to_alist map |> List.rev))
+    ;;
+
+    let choose_exn = (choose_exn [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
+
+    let%test_unit _ =
+      Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
         let t, map = (reify [@kind k v]) constructors in
         [%test_result: bool]
-          ((mem [@kind k v]) t (Key.unbox key) ~compare)
-          ~expect:(Map.mem map key))
-  ;;
+          (is_some
+             (Option.try_with (fun () -> ignore ((choose_exn [@kind k v]) t : #(_ * _)))))
+          ~expect:(not (Map.is_empty map)))
+    ;;]
+  end
 
-  let find_and_call = (find_and_call [@kind k v r] [@mode c])
-  [@@kind
-    k = (value_or_null, bits64, float64)
-    , v = (value_or_null, bits64, float64)
-    , r = (value_or_null, bits64, float64)]
-  [@@mode c = (uncontended, shared)]
-  ;;
-
-  let find_and_call = (find_and_call [@kind k v value_or_null])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key) ->
-        let t, map = (reify [@kind k v]) constructors in
-        [%test_result: [ `Found of Data.t | `Not_found of Key.t ]]
-          ((find_and_call [@kind k v])
-             t
-             (Key.unbox key)
-             ~compare
-             ~if_found:(fun data -> `Found (Data.box data))
-             ~if_not_found:(fun key -> `Not_found (Key.box key)))
-          ~expect:
-            (match Map.find map key with
-             | None -> `Not_found key
-             | Some data -> `Found data))
-  ;;
-
-  let findi_and_call = (findi_and_call [@kind k v r] [@mode c])
-  [@@kind
-    k = (value_or_null, bits64, float64)
-    , v = (value_or_null, bits64, float64)
-    , r = (value_or_null, bits64, float64)]
-  [@@mode c = (uncontended, shared)]
-  ;;
-
-  let findi_and_call = (findi_and_call [@kind k v value_or_null])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key) ->
-        let t, map = (reify [@kind k v]) constructors in
-        [%test_result: [ `Found of Key.t * Data.t | `Not_found of Key.t ]]
-          ((findi_and_call [@kind k v])
-             t
-             (Key.unbox key)
-             ~compare
-             ~if_found:(fun ~key ~data -> `Found (Key.box key, Data.box data))
-             ~if_not_found:(fun key -> `Not_found (Key.box key)))
-          ~expect:
-            (match Map.find map key with
-             | None -> `Not_found key
-             | Some data -> `Found (key, data)))
-  ;;
-
-  let find_and_call1 = (find_and_call1 [@kind k v a r] [@mode c])
-  [@@kind
-    k = (value_or_null, bits64, float64)
-    , v = (value_or_null, bits64, float64)
-    , a = (value_or_null, bits64, float64)
-    , r = (value_or_null, bits64, float64)]
-  [@@mode c = (uncontended, shared)]
-  ;;
-
-  let find_and_call1 = (find_and_call1 [@kind k v value_or_null value_or_null])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t * int [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key, a) ->
-        let t, map = (reify [@kind k v]) constructors in
-        [%test_result: [ `Found of Data.t * int | `Not_found of Key.t * int ]]
-          ((find_and_call1 [@kind k v])
-             t
-             (Key.unbox key)
-             ~compare
-             ~a
-             ~if_found:(fun data a -> `Found (Data.box data, a))
-             ~if_not_found:(fun key a -> `Not_found (Key.box key, a)))
-          ~expect:
-            (match Map.find map key with
-             | None -> `Not_found (key, a)
-             | Some data -> `Found (data, a)))
-  ;;
-
-  let findi_and_call1 = (findi_and_call1 [@kind k v a r] [@mode c])
-  [@@kind
-    k = (value_or_null, bits64, float64)
-    , v = (value_or_null, bits64, float64)
-    , a = (value_or_null, bits64, float64)
-    , r = (value_or_null, bits64, float64)]
-  [@@mode c = (uncontended, shared)]
-  ;;
-
-  let findi_and_call1 = (findi_and_call1 [@kind k v value_or_null value_or_null])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t * int [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key, a) ->
-        let t, map = (reify [@kind k v]) constructors in
-        [%test_result: [ `Found of Key.t * Data.t * int | `Not_found of Key.t * int ]]
-          ((findi_and_call1 [@kind k v])
-             t
-             (Key.unbox key)
-             ~compare
-             ~a
-             ~if_found:(fun ~key ~data a -> `Found (Key.box key, Data.box data, a))
-             ~if_not_found:(fun key a -> `Not_found (Key.box key, a)))
-          ~expect:
-            (match Map.find map key with
-             | None -> `Not_found (key, a)
-             | Some data -> `Found (key, data, a)))
-  ;;
-
-  let find_and_call2 = (find_and_call2 [@kind k v a b r] [@mode c])
-  [@@kind
-    k = (value_or_null, bits64, float64)
-    , v = (value_or_null, bits64, float64)
-    , a = (value_or_null, bits64, float64)
-    , b = (value_or_null, bits64, float64)
-    , r = (value_or_null, bits64, float64)]
-  [@@mode c = (uncontended, shared)]
-  ;;
-
-  let find_and_call2 =
-    (find_and_call2 [@kind k v value_or_null value_or_null value_or_null])
-  ;;
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t * int * string [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key, a, b) ->
-        let t, map = (reify [@kind k v]) constructors in
-        [%test_result:
-          [ `Found of Data.t * int * string | `Not_found of Key.t * int * string ]]
-          ((find_and_call2 [@kind k v])
-             t
-             (Key.unbox key)
-             ~compare
-             ~a
-             ~b
-             ~if_found:(fun data a b -> `Found (Data.box data, a, b))
-             ~if_not_found:(fun key a b -> `Not_found (Key.box key, a, b)))
-          ~expect:
-            (match Map.find map key with
-             | None -> `Not_found (key, a, b)
-             | Some data -> `Found (data, a, b)))
-  ;;
-
-  let findi_and_call2 = (findi_and_call2 [@kind k v a b r] [@mode c])
-  [@@kind
-    k = (value_or_null, bits64, float64)
-    , v = (value_or_null, bits64, float64)
-    , a = (value_or_null, bits64, float64)
-    , b = (value_or_null, bits64, float64)
-    , r = (value_or_null, bits64, float64)]
-  [@@mode c = (uncontended, shared)]
-  ;;
-
-  let findi_and_call2 =
-    (findi_and_call2 [@kind k v value_or_null value_or_null value_or_null])
-  ;;
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn
-      (module struct
-        type t = Constructors.t * Key.t * int * string [@@deriving quickcheck, sexp_of]
-      end)
-      ~f:(fun (constructors, key, a, b) ->
-        let t, map = (reify [@kind k v]) constructors in
-        [%test_result:
-          [ `Found of Key.t * Data.t * int * string | `Not_found of Key.t * int * string ]]
-          ((findi_and_call2 [@kind k v])
-             t
-             (Key.unbox key)
-             ~compare
-             ~a
-             ~b
-             ~if_found:(fun ~key ~data a b -> `Found (Key.box key, Data.box data, a, b))
-             ~if_not_found:(fun key a b -> `Not_found (Key.box key, a, b)))
-          ~expect:
-            (match Map.find map key with
-             | None -> `Not_found (key, a, b)
-             | Some data -> `Found (key, data, a, b)))
-  ;;
-
-  let iter = (iter [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
-      let t, map = (reify [@kind k v]) constructors in
-      [%test_result: (Key.t * Data.t) list]
-        (let q = Queue.create () in
-         (iter [@kind k v]) t ~f:(fun ~key ~data ->
-           Queue.enqueue q (Key.box key, Data.box data));
-         Queue.to_list q)
-        ~expect:(Map.to_alist map))
-  ;;
-
-  let mapi_inplace = (mapi_inplace [@kind k v])
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
-      let t, map = (reify [@kind k v]) constructors in
-      [%test_result: (Key.t * Data.t) list]
-        ((mapi_inplace [@kind k v]) t ~f:(fun ~key:_ ~data -> Data.map_unboxed data);
-         (fold [@kind k v]) t ~init:[] ~f:(fun ~key ~data acc ->
-           (Key.box key, Data.box data) :: acc))
-        ~expect:(Map.map map ~f:Data.map |> Map.to_alist |> List.rev))
-  ;;
-
-  let fold = (fold [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
-      let t, map = (reify [@kind k v]) constructors in
-      [%test_result: (Key.t * Data.t) list]
-        ((fold [@kind k v]) t ~init:[] ~f:(fun ~key ~data acc ->
-           (Key.box key, Data.box data) :: acc))
-        ~expect:(Map.to_alist map |> List.rev))
-  ;;
-
-  let choose_exn = (choose_exn [@kind k v] [@mode c]) [@@mode c = (uncontended, shared)]
-
-  let%test_unit _ =
-    Base_quickcheck.Test.run_exn (module Constructors) ~f:(fun constructors ->
-      let t, map = (reify [@kind k v]) constructors in
-      [%test_result: bool]
-        (is_some
-           (Option.try_with (fun () -> ignore ((choose_exn [@kind k v]) t : #(_ * _)))))
-        ~expect:(not (Map.is_empty map)))
-  ;;]
+  module Key = Key [@kind.explicit value_or_null]
+  module Data = Data [@kind.explicit value_or_null]
+  module Constructors = Constructors [@kind.explicit value_or_null value_or_null]
 
   let first = first
 

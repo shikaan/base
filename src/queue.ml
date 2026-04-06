@@ -70,7 +70,7 @@ let ensure_no_mutation t num_mutations =
   if t.num_mutations <> num_mutations then raise_mutation_during_iteration t
 ;;
 
-let compare__local =
+let%template[@mode local] compare =
   let rec unsafe_compare_from compare_elt pos ~t1 ~t2 ~len1 ~len2 ~mut1 ~mut2 =
     match pos = len1, pos = len2 with
     | true, true -> 0
@@ -99,9 +99,9 @@ let compare__local =
         ~mut2:t2.num_mutations
 ;;
 
-let compare compare_elt t1 t2 = compare__local compare_elt t1 t2
+let%template compare compare_elt t1 t2 = (compare [@mode local]) compare_elt t1 t2
 
-let equal__local =
+let%template[@mode local] equal =
   let rec unsafe_equal_from equal_elt pos ~t1 ~t2 ~mut1 ~mut2 ~len =
     pos = len
     ||
@@ -126,7 +126,7 @@ let equal__local =
          ~mut2:t2.num_mutations
 ;;
 
-let equal equal_elt t1 t2 = equal__local equal_elt t1 t2
+let%template equal equal_elt t1 t2 = (equal [@mode local]) equal_elt t1 t2
 
 let invariant invariant_a t =
   let { num_mutations; mask = _; elts; front; length } = t in
@@ -357,12 +357,8 @@ let iteri t ~f =
   done
 ;;
 
-let to_list t =
-  let result = ref [] in
-  for i = t.length - 1 downto 0 do
-    result := unsafe_get t i :: !result
-  done;
-  !result
+let%template[@alloc a = (heap, stack)] to_list t =
+  (List.init [@alloc a]) t.length ~f:(fun idx -> unsafe_get t idx) [@exclave_if_stack a]
 ;;
 
 module%template C = Indexed_container.Make [@modality portable] (struct
@@ -518,7 +514,10 @@ let singleton x =
   t
 ;;
 
-let sexp_of_t sexp_of_a t = to_list t |> List.sexp_of_t sexp_of_a
+let%template[@alloc a = (heap, stack)] sexp_of_t sexp_of_a t =
+  ((to_list [@alloc a]) t |> (List.sexp_of_t [@alloc a]) sexp_of_a) [@exclave_if_stack a]
+;;
+
 let t_of_sexp a_of_sexp sexp = List.t_of_sexp a_of_sexp sexp |> of_list
 
 let t_sexp_grammar (type a) (grammar : a Sexplib0.Sexp_grammar.t)

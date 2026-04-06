@@ -110,13 +110,10 @@ let index_exn t char =
 ;;
 
 let index_from t pos char =
-  index_from_internal
-    t
-    char
-    ~pos
-    ~len:(length t)
-    ~found:Option.some
-    ~not_found:(local_ fun () -> None)
+  let len = length t in
+  if pos < 0 || pos > len then invalid_arg "String.index_from";
+  index_from_internal t char ~pos ~len ~found:Option.some ~not_found:(local_ fun () ->
+    None)
   [@nontail]
 ;;
 
@@ -163,6 +160,7 @@ let rindex_exn t char =
 ;;
 
 let rindex_from t pos char =
+  if pos < -1 || pos >= length t then invalid_arg "String.rindex_from";
   rindex_from_internal t char ~pos ~found:Option.some ~not_found:(local_ fun () -> None)
   [@nontail]
 ;;
@@ -448,8 +446,9 @@ let substr_replace_all_gen ~case_sensitive t ~pattern ~with_ =
     ~with_ [@exclave_if_stack a] [@nontail]
 ;;]
 
-let is_substring_gen ~case_sensitive t ~substring =
-  Option.is_some (substr_index_gen t ~pattern:substring ~case_sensitive)
+let%template is_substring_gen ~case_sensitive t ~substring =
+  let pat = (Search_pattern.create [@alloc stack]) ~case_sensitive substring in
+  Search_pattern.matches pat t [@nontail]
 ;;
 
 let substr_index = substr_index_gen ~case_sensitive:true
@@ -519,7 +518,7 @@ module Caseless = struct
             && equal_loop ~pos:(pos + 1) ~len ~string1 ~string2)
       ;;
 
-      let equal__local string1 string2 =
+      let%template[@mode local] equal string1 string2 =
         phys_equal string1 string2
         ||
         let len1 = String.length string1 in
@@ -527,9 +526,9 @@ module Caseless = struct
         len1 = len2 && equal_loop ~pos:0 ~len:len1 ~string1 ~string2
       ;;
 
-      let equal a b = equal__local a b
-      let ( = ) a b = equal__local a b
-      let ( <> ) a b = not (equal__local a b)
+      let%template equal a b = (equal [@mode local]) a b
+      let%template ( = ) a b = (equal [@mode local]) a b
+      let%template ( <> ) a b = not ((equal [@mode local]) a b)
     end
 
     let char_compare_caseless c1 c2 = Char.compare (Char.lowercase c1) (Char.lowercase c2)
@@ -546,7 +545,7 @@ module Caseless = struct
         | _ -> c)
     ;;
 
-    let compare__local string1 string2 =
+    let%template[@mode local] compare string1 string2 =
       if phys_equal string1 string2
       then 0
       else
@@ -558,7 +557,7 @@ module Caseless = struct
           ~len2:(String.length string2)
     ;;
 
-    let compare a b = compare__local a b
+    let%template compare a b = (compare [@mode local]) a b
 
     let hash_fold_t state t =
       let len = length t in
@@ -699,7 +698,14 @@ let is_substring_at s ~pos ~substring =
 ;;
 
 (** precondition: when [0 <= n <= length t], [~pos] and [~len] are both in-bounds *)
-let wrap_sub_n t n ~name ~pos ~len ~when_n_exceeds_length =
+let%template[@alloc a = (heap, stack)] wrap_sub_n
+  t
+  n
+  ~name
+  ~pos
+  ~len
+  ~when_n_exceeds_length
+  =
   if n > length t
   then when_n_exceeds_length
   else if n < 0
@@ -708,27 +714,53 @@ let wrap_sub_n t n ~name ~pos ~len ~when_n_exceeds_length =
     (* The way arguments to this function are constructed (see usages below), the check
        that [0 <= n <= length t] is sufficient to know that [pos] and [len] are valid.
        Thus [sub] should not raise. *)
-    sub t ~pos ~len
+    (sub [@alloc a]) t ~pos ~len [@exclave_if_stack a]
 ;;
 
-let drop_prefix t n =
-  wrap_sub_n ~name:"drop_prefix" t n ~pos:n ~len:(length t - n) ~when_n_exceeds_length:""
+let%template[@alloc a = (heap, stack)] drop_prefix t n =
+  (wrap_sub_n [@alloc a])
+    ~name:"drop_prefix"
+    t
+    n
+    ~pos:n
+    ~len:(length t - n)
+    ~when_n_exceeds_length:"" [@exclave_if_stack a]
 ;;
 
 let drop_suffix t n =
   wrap_sub_n ~name:"drop_suffix" t n ~pos:0 ~len:(length t - n) ~when_n_exceeds_length:""
 ;;
 
-let prefix t n = wrap_sub_n ~name:"prefix" t n ~pos:0 ~len:n ~when_n_exceeds_length:t
-
-let suffix t n =
-  wrap_sub_n ~name:"suffix" t n ~pos:(length t - n) ~len:n ~when_n_exceeds_length:t
+let%template[@alloc a = (heap, stack)] prefix t n =
+  (wrap_sub_n [@alloc a])
+    ~name:"prefix"
+    t
+    n
+    ~pos:0
+    ~len:n
+    ~when_n_exceeds_length:t [@exclave_if_stack a]
 ;;
 
-let lfindi ?(pos = 0) t ~f =
+let%template[@alloc a = (heap, stack)] suffix t n =
+  (wrap_sub_n [@alloc a])
+    ~name:"suffix"
+    t
+    n
+    ~pos:(length t - n)
+    ~len:n
+    ~when_n_exceeds_length:t [@exclave_if_stack a]
+;;
+
+let lfindi_or_null ?(pos = 0) (t @ local) ~f =
   let n = length t in
-  let rec loop i = if i = n then None else if f i t.[i] then Some i else loop (i + 1) in
+  let rec loop i = if i = n then Null else if f i t.[i] then This i else loop (i + 1) in
   loop pos [@nontail]
+;;
+
+let lfindi ?pos t ~f =
+  match lfindi_or_null ?pos t ~f with
+  | This i -> Some i
+  | Null -> None
 ;;
 
 let%template[@mode l = (global, local)] find t ~f =
@@ -754,8 +786,8 @@ let%template find_map =
 [@@mode li = (global, local), lo = (global, local)]
 ;;
 
-let rfindi ?pos t ~f =
-  let rec loop i = if i < 0 then None else if f i t.[i] then Some i else loop (i - 1) in
+let rfindi_or_null ?pos (t @ local) ~f =
+  let rec loop i = if i < 0 then Null else if f i t.[i] then This i else loop (i - 1) in
   let pos =
     match pos with
     | Some pos -> pos
@@ -764,37 +796,47 @@ let rfindi ?pos t ~f =
   loop pos [@nontail]
 ;;
 
-let last_non_drop ~drop t = rfindi t ~f:(fun _ c -> not (drop c)) [@nontail]
-
-let rstrip ?(drop = Char.is_whitespace) t =
-  match last_non_drop t ~drop with
-  | None -> ""
-  | Some i -> if i = length t - 1 then t else prefix t (i + 1)
+let rfindi ?pos t ~f =
+  match rfindi_or_null ?pos t ~f with
+  | This i -> Some i
+  | Null -> None
 ;;
 
-let first_non_drop ~drop t = lfindi t ~f:(fun _ c -> not (drop c)) [@nontail]
+let last_non_drop ~drop t = rfindi_or_null t ~f:(fun _ c -> not (drop c)) [@nontail]
 
-let lstrip ?(drop = Char.is_whitespace) t =
-  match first_non_drop t ~drop with
-  | None -> ""
-  | Some 0 -> t
-  | Some n -> drop_prefix t n
+let%template[@alloc a = (heap, stack)] rstrip ?(drop = Char.is_whitespace) t =
+  match last_non_drop t ~drop with
+  | Null -> ""
+  | This i ->
+    if i = length t - 1 then t else (prefix [@alloc a]) t (i + 1) [@exclave_if_stack a]
+;;
+
+let first_non_drop ~drop t = lfindi_or_null t ~f:(fun _ c -> not (drop c)) [@nontail]
+
+let%template[@alloc a @ m = (heap_global, stack_local)] lstrip
+  ?(drop = Char.is_whitespace)
+  (t @ m)
+  =
+  match[@exclave_if_stack a] first_non_drop t ~drop with
+  | Null -> ""
+  | This 0 -> t
+  | This n -> (drop_prefix [@alloc a]) t n
 ;;
 
 (* [strip t] could be implemented as [lstrip (rstrip t)]. The implementation below saves
    (at least) a factor of two allocation, by only allocating the final result. This also
    saves some amount of time. *)
-let strip ?(drop = Char.is_whitespace) t =
+let%template[@alloc a = (heap, stack)] strip ?(drop = Char.is_whitespace) t =
   let length = length t in
   if length = 0 || not (drop t.[0] || drop t.[length - 1])
   then t
   else (
     match first_non_drop t ~drop with
-    | None -> ""
-    | Some first ->
-      (match last_non_drop t ~drop with
-       | None -> assert false
-       | Some last -> sub t ~pos:first ~len:(last - first + 1)))
+    | Null -> ""
+    | This first ->
+      (match[@exclave_if_stack a] last_non_drop t ~drop with
+       | Null -> assert false
+       | This last -> (sub [@alloc a]) t ~pos:first ~len:(last - first + 1)))
 ;;
 
 let%template mapi t ~f =
@@ -1231,9 +1273,9 @@ include Hash
 let pp ppf string = Stdlib.Format.fprintf ppf "%S" string
 let of_char c = make 1 c
 
-let%template[@alloc a @ l = (heap_global, stack_local)] of_char_list l =
+let%template[@alloc a @ l = (heap_global, stack_local)] of_char_list (l @ local) =
   (let t = (Bytes.create [@alloc a]) (List.length l) in
-   (List.iteri [@mode l]) l ~f:(fun i c -> Bytes.set t i c);
+   (List.iteri [@mode local]) l ~f:(fun i c -> Bytes.set t i c);
    Bytes.unsafe_to_string ~no_mutation_while_string_reachable:t)
   [@exclave_if_stack a]
 ;;
@@ -1794,8 +1836,8 @@ module Escaping = struct
     | false, false -> `Literal
   ;;
 
-  let check_bound str pos function_name =
-    if pos >= length str || pos < 0 then invalid_argf "%s: out of bounds" function_name ()
+  let check_bound str ?(min = 0) ?(max = length str - 1) pos function_name =
+    if pos > max || pos < min then invalid_argf "%s: out of bounds" function_name ()
   ;;
 
   let is_char_escaping str ~escape_char pos =
@@ -1820,21 +1862,25 @@ module Escaping = struct
   ;;
 
   let index_from str ~escape_char pos char =
-    check_bound str pos "index_from";
-    let rec loop i status =
-      if i >= pos
-         && (match status with
-             | `Literal -> true
-             | `Escaped | `Escaping -> false)
-         && Char.equal str.[i] char
-      then Some i
-      else (
-        let i = i + 1 in
-        if i >= length str
-        then None
-        else loop i (update_escape_status str ~escape_char i status))
-    in
-    loop pos (escape_status str ~escape_char pos)
+    let len = length str in
+    check_bound str pos "index_from" ~min:0 ~max:len;
+    if pos = len
+    then None
+    else (
+      let rec loop i status =
+        if i >= pos
+           && (match status with
+               | `Literal -> true
+               | `Escaped | `Escaping -> false)
+           && Char.equal str.[i] char
+        then Some i
+        else (
+          let i = i + 1 in
+          if i >= length str
+          then None
+          else loop i (update_escape_status str ~escape_char i status))
+      in
+      loop pos (escape_status str ~escape_char pos))
   ;;
 
   let index_from_exn str ~escape_char pos char =
@@ -1855,7 +1901,7 @@ module Escaping = struct
   let index_exn str ~escape_char char = index_from_exn str ~escape_char 0 char
 
   let rindex_from str ~escape_char pos char =
-    check_bound str pos "rindex_from";
+    check_bound str pos "rindex_from" ~min:(-1) ~max:(length str - 1);
     (* if the target char is the same as [escape_char], we have no way to determine which
        escape_char is literal, so just return None *)
     if Char.equal char escape_char

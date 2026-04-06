@@ -106,20 +106,20 @@ module Definitions = struct
     val create
       :  ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default 0 *)
-      -> 'a Key.t
+      -> 'a Key.t @ immutable
       -> 'a t
 
     val of_list
       :  ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default [List.length] *)
-      -> 'a Key.t
+      -> 'a Key.t @ immutable
       -> 'a list
       -> 'a t
 
     val of_array
       :  ?growth_allowed:bool (** defaults to [true] *)
       -> ?size:int (** initial size -- default [Array.length] *)
-      -> 'a Key.t
+      -> 'a Key.t @ immutable
       -> 'a array
       -> 'a t
   end
@@ -185,8 +185,8 @@ module Definitions = struct
       -> 'elt t Sexplib0.Sexp_grammar.t
       @@ portable
 
-    val equal_m__t : (module Equal_m) -> 'elt t -> 'elt t -> bool
-    val equal__local_m__t : (module Equal_m) -> 'elt t @ local -> 'elt t @ local -> bool
+    val%template equal_m__t : (module Equal_m) -> 'elt t @ m -> 'elt t @ m -> bool
+    [@@mode m = (local, global)]
   end
 end
 

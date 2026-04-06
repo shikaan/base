@@ -9,11 +9,19 @@ module Make (I : sig
   @@ portable
     type t
 
-    val to_string : local_ t -> string
+    val%template to_string : local_ t -> string @ m
+    [@@alloc a @ m = (heap_global, stack_local)]
   end) : sig
   @@ portable
-  val to_string_hum : ?delimiter:char (** defaults to ['_'] *) -> local_ I.t -> string
-  val sexp_of_t : I.t -> Sexp.t
+  [%%template:
+  [@@@alloc.default a @ m = (heap_global, stack_local)]
+
+  val to_string_hum
+    :  ?delimiter:char (** defaults to ['_'] *)
+    -> I.t @ local
+    -> string @ m
+
+  val sexp_of_t : I.t @ local -> Sexp.t @ m]
 end
 
 (** in the output, [to_string], [of_string], [sexp_of_t], and [t_of_sexp] convert between
@@ -66,10 +74,18 @@ val sexp_of_int_style : [ `No_underscores | `Underscores ] Dynamic.t
     (-|+)?[0-9a-fA-F]+ and puts [delimiter] every [chars_per_delimiter] characters
     starting from the right.
     v} *)
-val insert_delimiter_every : string -> delimiter:char -> chars_per_delimiter:int -> string
+
+[%%template:
+[@@@alloc.default a @ m = (heap_global, stack_local)]
+
+val insert_delimiter_every
+  :  string @ m
+  -> delimiter:char
+  -> chars_per_delimiter:int
+  -> string @ m
 
 (** [insert_delimiter_every ~chars_per_delimiter:3] *)
-val insert_delimiter : string -> delimiter:char -> string
+val insert_delimiter : string @ m -> delimiter:char -> string @ m
 
 (** [insert_delimiter ~delimiter:'_'] *)
-val insert_underscores : string -> string
+val insert_underscores : string @ m -> string @ m]

@@ -84,6 +84,10 @@ let%expect_test "of_string" =
   [%expect {| (Ok 0) |}];
   test "-1";
   [%expect {| (Ok -1) |}];
+  test "";
+  [%expect {| (Error (Failure Int64.of_string)) |}];
+  test "-";
+  [%expect {| (Error (Failure Int64.of_string)) |}];
   test "0xBEEF";
   [%expect {| (Ok 48_879) |}];
   (* max_value *)

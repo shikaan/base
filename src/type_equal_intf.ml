@@ -34,19 +34,26 @@ module Sexp = Sexp0
 
 [@@@warning "-incompatible-with-upstream"]
 
-module Definitions = struct
-  module%template Type_equal_defns (Type_equal : T.T2 [@kind any any]) = struct
-    (** The [Lift*] module types are used by the [Lift*] functors. See below. *)
+[%%template
+[@@@kind_set.define smaller_all = (any, value)]
+[@@@kind_set.define all = (smaller_all, value_or_null)]
 
-    [@@@kind.default k1 = (any, value)]
+module Definitions = struct
+  module Type_equal_defns (Type_equal : T.T2 [@kind any any]) = struct
+    (** The [Lift*] module types are used by the [Lift*] functors. See below.
+
+        We support [value_or_null] only for [Lift] and [Lift2], just to reduce to the
+        number of templates. Those instances must be referred to with kind.explicit, e.g.
+        [Lift[@kind.explicit value_or_null]]. *)
 
     module type Lift = sig @@ portable
       type ('a : k1) t
 
       val lift : ('a : k1) ('b : k1). ('a, 'b) Type_equal.t -> ('a t, 'b t) Type_equal.t
     end
+    [@@kind.explicit k1 = all]
 
-    [@@@kind.default k2 = (any, value)]
+    module type Lift = Lift [@kind.explicit value]
 
     module type Lift2 = sig @@ portable
       type ('a : k1, 'b : k2) t
@@ -57,8 +64,11 @@ module Definitions = struct
         -> ('a2, 'b2) Type_equal.t
         -> (('a1, 'a2) t, ('b1, 'b2) t) Type_equal.t
     end
+    [@@kind.explicit k1 = all, k2 = all]
 
-    [@@@kind.default k3 = (any, value)]
+    module type Lift2 = Lift2 [@kind.explicit value value]
+
+    [@@@kind.default k1 = smaller_all, k2 = smaller_all, k3 = smaller_all]
 
     module type Lift3 = sig @@ portable
       type ('a : k1, 'b : k2, 'c : k3) t
@@ -71,7 +81,7 @@ module Definitions = struct
         -> (('a1, 'a2, 'a3) t, ('b1, 'b2, 'b3) t) Type_equal.t
     end
 
-    [@@@kind.default k4 = (any, value)]
+    [@@@kind.default k4 = smaller_all]
 
     module type Lift4 = sig @@ portable
       type ('a : k1, 'b : k2, 'c : k3, 'd : k4) t
@@ -87,7 +97,7 @@ module Definitions = struct
     end
   end
 
-  module%template Type_equal_id_defns (Id : sig
+  module Type_equal_id_defns (Id : sig
       type ('a : any) t
     end) =
   struct
@@ -115,13 +125,13 @@ module Definitions = struct
       val type_equal_id : 'a Id.t -> 'a t Id.t
     end
 
-    module type%template [@kind ka = (value, immediate64), kb = value] Arg2 = sig
+    module type [@kind ka = (value, immediate64), kb = value] Arg2 = sig
       type (!'a : ka, !'b : kb) t [@@deriving sexp_of]
 
       val name : string
     end
 
-    module type%template [@kind ka = (value, immediate64), kb = value] S2 = sig
+    module type [@kind ka = (value, immediate64), kb = value] S2 = sig
       type ('a : ka, 'b : kb) t
 
       val type_equal_id : ('a : ka) ('b : kb). 'a Id.t -> 'b Id.t -> ('a, 'b) t Id.t
@@ -209,7 +219,7 @@ module type Type_equal = sig @@ portable
       ]}
 
       this would give a type error. *)
-  val%template conv : ('a : k) ('b : k). ('a, 'b) t -> 'a @ l v -> 'b @ l v
+  val conv : ('a : k) ('b : k). ('a, 'b) t -> 'a @ l v -> 'b @ l v
   [@@kind k = (value_or_null, value_or_null & bits64)]
   [@@mode l = (global, local), v = (read_write, read, immutable)]
 
@@ -218,27 +228,31 @@ module type Type_equal = sig @@ portable
       sometimes, e.g., when using [conv], one needs to explicitly use this fact to
       construct an appropriate [Type_equal.t]. The [Lift*] functors do this. *)
 
-  [%%template:
-  [@@@kind.default k1 = (any, value)]
+  module Lift (T : T1 [@kind.explicit k1]) :
+    Lift [@kind.explicit k1] with type ('a : k1) t := 'a T.t
+  [@@kind.explicit k1 = all]
 
-  module Lift (T : T1 [@kind k1]) : Lift [@kind k1] with type ('a : k1) t := 'a T.t
+  module Lift (T : T1) : Lift with type 'a t := 'a T.t
 
-  [@@@kind.default k2 = (any, value)]
+  module Lift2 (T : T2 [@kind.explicit k1 k2]) :
+    Lift2 [@kind.explicit k1 k2] with type ('a : k1, 'b : k2) t := ('a, 'b) T.t
+  [@@kind.explicit k1 = all, k2 = all]
 
-  module Lift2 (T : T2 [@kind k1 k2]) :
-    Lift2 [@kind k1 k2] with type ('a : k1, 'b : k2) t := ('a, 'b) T.t
+  module Lift2 (T : T2) : Lift2 with type ('a, 'b) t := ('a, 'b) T.t
 
-  [@@@kind.default k3 = (any, value)]
+  include sig
+    [@@@kind.default k1 = smaller_all, k2 = smaller_all, k3 = smaller_all]
 
-  module Lift3 (T : T3 [@kind k1 k2 k3]) :
-    Lift3 [@kind k1 k2 k3] with type ('a : k1, 'b : k2, 'c : k3) t := ('a, 'b, 'c) T.t
+    module Lift3 (T : T3 [@kind k1 k2 k3]) :
+      Lift3 [@kind k1 k2 k3] with type ('a : k1, 'b : k2, 'c : k3) t := ('a, 'b, 'c) T.t
 
-  [@@@kind.default k4 = (any, value)]
+    [@@@kind.default k4 = smaller_all]
 
-  module Lift4 (T : T4 [@kind k1 k2 k3 k4]) :
-    Lift4
-    [@kind k1 k2 k3 k4]
-    with type ('a : k1, 'b : k2, 'c : k3, 'd : k4) t := ('a, 'b, 'c, 'd) T.t]
+    module Lift4 (T : T4 [@kind k1 k2 k3 k4]) :
+      Lift4
+      [@kind k1 k2 k3 k4]
+      with type ('a : k1, 'b : k2, 'c : k3, 'd : k4) t := ('a, 'b, 'c, 'd) T.t
+  end
 
   (** [tuple2] and [detuple2] convert between equality on a 2-tuple and its components. *)
 
@@ -262,22 +276,22 @@ module type Type_equal = sig @@ portable
     module Uid : sig
       type t : value mod contended portable [@@deriving hash, sexp_of ~stackify]
 
-      include%template Comparable.S [@mode local] [@modality portable] with type t := t
+      include Comparable.S [@mode local] [@modality portable] with type t := t
     end
 
-    val%template uid : (_ : any) t @ m -> Uid.t @ m [@@mode m = (global, local)]
+    val uid : (_ : any) t @ m -> Uid.t @ m [@@mode m = (global, local)]
 
     (** [create ~name] defines a new type identity. Two calls to [create] will result in
         two distinct identifiers, even for the same arguments with the same type. If the
         type ['a] doesn't support sexp conversion, then a good practice is to have the
         converter be [[%sexp_of: _]], (or [sexp_of_opaque], if not using ppx_sexp_conv). *)
-    val%template create : ('a : any). name:string -> ('a -> Sexp.t) @ p -> 'a t @ p
+    val create : ('a : any). name:string -> ('a -> Sexp.t) @ p -> 'a t @ p
     [@@mode p = (nonportable, portable)]
 
     (** Accessors *)
 
     val hash : ('a : any). 'a t -> int
-    val name : ('a : any). 'a t -> string
+    val name : ('a : any). 'a t @ m -> string @ m [@@mode m = (global, local)]
     val to_sexp : ('a : any). 'a t -> 'a -> Sexp.t
     val hash_fold_t : Hash.state -> _ t -> Hash.state
 
@@ -306,4 +320,4 @@ module type Type_equal = sig @@ portable
     module%template.portable Create4 (T : Arg4) :
       S4 with type ('a, 'b, 'c, 'd) t := ('a, 'b, 'c, 'd) T.t
   end
-end
+end]

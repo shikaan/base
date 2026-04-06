@@ -770,12 +770,14 @@ let%expect_test "templated map{,i}" =
   print [%sexp_of: Int63.t Array.t] t;
   [%expect {| (1 2 3 4 5 6) |}];
   let t =
-    (mapi [@kind (value mod external64) value]) t ~f:(fun i x ->
+    (mapi [@kind (value_or_null mod external64) value_or_null]) t ~f:(fun i x ->
       {%string|%{i#Int}%{x#Int63}|})
   in
   print [%sexp_of: string array] t;
   [%expect {| (01 12 23 34 45 56) |}];
-  let t = (map [@kind value bits64]) t ~f:(fun x -> Int64_u.(of_string x + #1L)) in
+  let t =
+    (map [@kind value_or_null bits64]) t ~f:(fun x -> Int64_u.(of_string x + #1L))
+  in
   print [%sexp_of: (Int64_u.t Array.t[@kind bits64])] t;
   [%expect {| (2 13 24 35 46 57) |}];
   let t =
@@ -787,10 +789,20 @@ let%expect_test "templated map{,i}" =
   print [%sexp_of: (Float_u.t Array.t[@kind float64])] t;
   [%expect {| (4.5 28.25 52 75.75 99.5 123.25) |}];
   let t =
-    (map [@kind float64 (value mod external64)]) t ~f:(fun x -> Float_u.(x > #55.0))
+    (map [@kind float64 (value_or_null mod external64)]) t ~f:(fun x ->
+      Float_u.(x > #55.0))
   in
   print [%sexp_of: bool Array.t] t;
-  [%expect {| (false false false true true true) |}]
+  [%expect {| (false false false true true true) |}];
+  let t =
+    (mapi [@kind value_or_null (value_or_null mod external64)]) t ~f:(fun i x ->
+      if x then This i else Null)
+  in
+  print [%sexp_of: int or_null array] t;
+  [%expect {| (() () () (3) (4) (5)) |}];
+  let t = map t ~f:(Or_null.map ~f:(fun x -> {%string|%{x#Int} !|})) in
+  print [%sexp_of: string or_null array] t;
+  [%expect {| (() () () ("3 !") ("4 !") ("5 !")) |}]
 ;;
 
 let%expect_test "derivers on value_or_null" =

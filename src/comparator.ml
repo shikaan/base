@@ -74,7 +74,7 @@ end
 
 module%template.portable
   [@modality p] Make (M : sig
-    type t [@@deriving (compare [@mode m]), sexp_of]
+    type t [@@deriving (compare [@mode.explicit m]), sexp_of]
   end) =
 struct
   type comparator_witness : value mod p
@@ -189,7 +189,7 @@ end
 
 module%template.portable
   [@modality p] Derived (M : sig
-    type 'a t [@@deriving (compare [@mode m]), sexp_of]
+    type 'a t [@@deriving (compare [@mode.explicit m]), sexp_of]
   end) =
 Derived_phantom [@mode m] [@modality p] (struct
     include M
@@ -199,7 +199,7 @@ Derived_phantom [@mode m] [@modality p] (struct
 
 module%template.portable
   [@modality p] Derived2 (M : sig
-    type ('a, 'b) t [@@deriving (compare [@mode m]), sexp_of]
+    type ('a, 'b) t [@@deriving (compare [@mode.explicit m]), sexp_of]
   end) =
 Derived2_phantom [@mode m] [@modality p] (struct
     include M

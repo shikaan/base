@@ -126,7 +126,7 @@ module type Comparator = sig @@ portable
       nullary type. *)
   module%template.portable
     [@modality p] Make (M : sig
-      type t [@@deriving (compare [@mode m]), sexp_of]
+      type t [@@deriving (compare [@mode.explicit m]), sexp_of]
     end) : S [@modality p] with type t := M.t
 
   (** [Make1] creates a [comparator] value and its phantom [comparator_witness] type for a
@@ -145,14 +145,14 @@ module type Comparator = sig @@ portable
       ['a t] given a comparator for the type ['a]. *)
   module%template.portable
     [@modality p] Derived (M : sig
-      type 'a t [@@deriving (compare [@mode m]), sexp_of]
+      type 'a t [@@deriving (compare [@mode.explicit m]), sexp_of]
     end) : Derived [@modality p] with type 'a t := 'a M.t
 
   (** [Derived2] creates a [comparator] function that constructs a comparator for the type
       [('a, 'b) t] given comparators for the type ['a] and ['b]. *)
   module%template.portable
     [@modality p] Derived2 (M : sig
-      type ('a, 'b) t [@@deriving (compare [@mode m]), sexp_of]
+      type ('a, 'b) t [@@deriving (compare [@mode.explicit m]), sexp_of]
     end) : Derived2 [@modality p] with type ('a, 'b) t := ('a, 'b) M.t
 
   (** [Derived_phantom] creates a [comparator] function that constructs a comparator for

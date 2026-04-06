@@ -7,7 +7,9 @@
 
 open! Import
 
-type 'a t : mutable_data with 'a [@@deriving sexp, sexp_grammar]
+type ('a : value_or_null) t : mutable_data with 'a
+
+[%%rederive: type nonrec 'a t = 'a t [@@deriving sexp, sexp_grammar]]
 
 val empty : _ t
 
@@ -15,7 +17,7 @@ val empty : _ t
 val get_empty : unit -> _ t
 
 (** Initially filled with all [None] *)
-val create : len:int -> _ t
+val create : ('a : value_or_null). len:int -> 'a t
 
 include
   Indexed_container.Generic with type ('a, _, _) t := 'a t and type 'a elt := 'a option
@@ -39,7 +41,7 @@ val get_or_null : 'a t -> int -> 'a or_null
 val get_local : local_ 'a t -> int -> local_ 'a option
 
 (** Raises if the element number [i] is [None]. *)
-val get_some_exn : 'a t -> int -> 'a
+val get_some_exn : ('a : value_or_null). 'a t -> int -> 'a
 
 (** [is_none t i = Option.is_none (get t i)] *)
 val is_none : _ t -> int -> bool
@@ -67,7 +69,7 @@ val unsafe_is_some : _ t -> int -> bool
     raising if [i] is outside the range 0 to [length t - 1]. *)
 val set : 'a t -> int -> 'a option -> unit
 
-val set_some : 'a t -> int -> 'a -> unit
+val set_some : ('a : value_or_null). 'a t -> int -> 'a -> unit
 val set_none : _ t -> int -> unit
 val swap : _ t -> int -> int -> unit
 

@@ -508,6 +508,67 @@ module [@kind k = value] [@alloc a @ l = (stack_local, heap_global)] _ = struct
       ([%test_eq: Harness.t] [@alloc stack]) actual expected [@nontail])
   ;;
 
+  let%test_unit [%name name "filter_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f x : Int.t or_null =
+        if Int.(x % of_int_exn 2 = of_int_exn 0) then This x else Null
+      in
+      let actual =
+        (Harness.box [@alloc a])
+          (Harness.unbox list |> List.map ~f |> (List.filter_or_null [@alloc a]))
+      in
+      let expected =
+        Stdlib.List.filter_map
+          (fun x ->
+            match f (Elt.unbox x) with
+            | This y -> Some (Elt.box y)
+            | Null -> None)
+          list
+      in
+      ([%test_eq: Harness.t] [@alloc stack]) actual expected [@nontail])
+  ;;
+
+  let%test_unit [%name name "rev_filter_map_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f x : Int.t or_null =
+        if Int.(x % of_int_exn 2 = of_int_exn 0) then This x else Null
+      in
+      let actual =
+        (Harness.box [@alloc a]) (List.rev_filter_map_or_null (Harness.unbox list) ~f)
+      in
+      let expected =
+        Stdlib.List.filter_map
+          (fun x ->
+            match f (Elt.unbox x) with
+            | This y -> Some (Elt.box y)
+            | Null -> None)
+          list
+        |> Stdlib.List.rev
+      in
+      ([%test_eq: Harness.t] [@alloc stack]) actual expected [@nontail])
+  ;;
+
+  let%test_unit [%name name "rev_filter_mapi_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f i x : Int.t or_null =
+        if i % 2 = 0 then This Elt.(x / of_int_exn 2) else Null
+      in
+      let actual =
+        (Harness.box [@alloc a]) (List.rev_filter_mapi_or_null (Harness.unbox list) ~f)
+      in
+      let expected =
+        Stdlib.List.mapi
+          (fun i x ->
+            match f i (Elt.unbox x) with
+            | This y -> Some (Elt.box y)
+            | Null -> None)
+          list
+        |> Stdlib.List.filter_map Fn.id
+        |> Stdlib.List.rev
+      in
+      ([%test_eq: Harness.t] [@alloc stack]) actual expected [@nontail])
+  ;;
+
   let%test_unit [%name name "nth"] =
     Base_quickcheck.Test.run_exn
       ~config
@@ -722,6 +783,49 @@ module [@kind k = (value, bits32)] [@alloc a @ l = (stack_local, heap_global)] _
             match f i (Elt.unbox x) with
             | None -> None
             | Some y -> Some (Elt.box y))
+          list
+        |> Stdlib.List.filter_map Fn.id
+      in
+      ([%test_eq: Harness.t] [@alloc stack]) actual expected [@nontail])
+  ;;
+
+  let%test_unit [%name name "filter_map_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f (x : Elt.t) : Elt.boxed or_null =
+        let open Elt in
+        if x % of_int_exn 3 = of_int_exn 0 then This (box (x / of_int_exn 2)) else Null
+      in
+      let actual =
+        (List.filter_map_or_null [@kind k] [@mode l] [@alloc a]) (Harness.unbox list) ~f
+      in
+      let expected =
+        Stdlib.List.filter_map
+          (fun x ->
+            match f (Elt.unbox x) with
+            | This y -> Some y
+            | Null -> None)
+          list
+      in
+      ([%test_eq: Harness.t] [@alloc stack]) actual expected [@nontail])
+  ;;
+
+  let%test_unit [%name name "filter_mapi_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f i (x : Elt.t) : Elt.boxed or_null =
+        let open Elt in
+        if Int.(i % 2 = 1) && x > of_int_exn 2
+        then This (box (x % of_int_exn i))
+        else Null
+      in
+      let actual =
+        (List.filter_mapi_or_null [@kind k] [@mode l] [@alloc a]) (Harness.unbox list) ~f
+      in
+      let expected =
+        Stdlib.List.mapi
+          (fun i x ->
+            match f i (Elt.unbox x) with
+            | This y -> Some y
+            | Null -> None)
           list
         |> Stdlib.List.filter_map Fn.id
       in
