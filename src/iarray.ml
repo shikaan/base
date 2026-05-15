@@ -1,4 +1,5 @@
 open! Import
+open Modes.Export
 include Iarray_intf.Definitions
 include Iarray0
 module I = Basement.Stdlib_iarray_labels
@@ -63,16 +64,12 @@ module%template Local0 = struct
        can lead to an array's contents pointing forwards. The latter three functions could
        be overloaded via [[@local_opt]], but we don't do that in order to isolate the
        unsafety. *)
-    external make_mutable_local : int -> 'a -> 'a array = "caml_make_vect"
-    external unsafe_set_local : 'a array -> int -> 'a -> unit = "%array_unsafe_set"
+    external make_mutable_local : 'a. int -> 'a -> 'a array = "caml_make_vect"
+    external unsafe_set_local : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
 
     external unsafe_blit_local
-      :  src:'a t
-      -> src_pos:int
-      -> dst:'a array
-      -> dst_pos:int
-      -> len:int
-      -> unit
+      : 'a.
+      src:'a t -> src_pos:int -> dst:'a array -> dst_pos:int -> len:int -> unit
       = "caml_array_blit"
   end
 
@@ -547,7 +544,8 @@ let iteri t ~(f : _ -> _ -> _) =
 let iter t ~f = (iteri [@mode m]) t ~f:(fun _ x -> f x) [@nontail]]
 
 [%%template
-[@@@kind.default ka = value, kacc = base_or_null]
+[@@@kind.default ka = value_or_null, kacc = base_or_null]
+[@@@kind ka' = ka mod separable]
 [@@@mode.default mi = (global, local), mo = (global, local)]
 
 let foldi (type a acc) (t : a t) ~(init : acc) ~f : acc =
@@ -726,6 +724,32 @@ let find t ~f =
     | true -> Some x
     | false -> None)
   [@nontail] [@exclave_if_local m ~reasons:[ May_return_local ]]
+;;
+
+let find_or_null t ~f =
+  let length = length t in
+  (let rec loop pos =
+     if [@exclave_if_local m ~reasons:[ May_return_local ]] pos >= length
+     then Null
+     else (
+       let value = unsafe_get t pos in
+       if (f [@inlined hint]) value then This value else loop (pos + 1))
+   in
+   loop 0 [@nontail])
+  [@exclave_if_local m ~reasons:[ May_return_local ]]
+;;
+
+let findi_or_null t ~f =
+  let length = length t in
+  (let rec loop pos =
+     if [@exclave_if_local m ~reasons:[ May_return_local ]] pos >= length
+     then Null
+     else (
+       let value = unsafe_get t pos in
+       if (f [@inlined hint]) pos value then This (pos, value) else loop (pos + 1))
+   in
+   loop 0 [@nontail])
+  [@exclave_if_local m ~reasons:[ May_return_local ]]
 ;;
 
 let[@inline] best_elt t ~first_is_better_than_second =
@@ -1229,7 +1253,7 @@ module%template Local = struct
   include Local0
 
   [%%template
-  [@@@kind.default ka = value, kacc = base_or_null]
+  [@@@kind.default ka = value_or_null, kacc = base_or_null]
 
   let fold = (fold [@kind ka kacc] [@mode local local])
   let foldi = (foldi [@kind ka kacc] [@mode local local])
@@ -1338,6 +1362,8 @@ module Unique = struct
     *)
     Obj.magic_unique (zip_exn t1 t2)
   ;;
+
+  external of_array : ('a array[@local_opt]) -> ('a global t[@local_opt]) = "%identity"
 end
 
 (** Binary search *)

@@ -12,11 +12,12 @@ open! Import
 module Definitions = struct
   [%%template
   [@@@mode.default m = (global, local)]
+  [@@@alloc.default a = (heap, stack)]
 
   module type Arg = sig
     type t [@@deriving (compare [@mode.explicit m]), hash, sexp]
 
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
 
     (** For registering the pretty printer. *)
     val module_name : string
@@ -25,14 +26,14 @@ module Definitions = struct
   [@@@modality.default p = (portable, nonportable)]
 
   module type Arg_with_comparator = sig
-    include Arg [@mode m]
+    include Arg [@mode m] [@alloc a]
     include Comparator.S [@modality p] with type t := t
   end
 
   module type S = sig
     type t [@@deriving hash, sexp]
 
-    include Stringable.S with type t := t
+    include Stringable.S [@alloc a] with type t := t
     include Comparable.S [@modality p] [@mode m] with type t := t
     include Pretty_printer.S with type t := t
 
@@ -46,6 +47,7 @@ module type%template Identifiable = sig
   end
 
   [@@@mode.default m = (global, local)]
+  [@@@alloc.default a = (heap, stack)]
 
   (** Used for making an Identifiable module. Here's an example.
 
@@ -66,15 +68,15 @@ module type%template Identifiable = sig
           include Identifiable.Make (T)
         end
       ]} *)
-  module%template.portable [@modality p] Make (M : Arg [@mode m]) :
-    S [@mode m] [@modality p] with type t := M.t
+  module%template.portable [@modality p] Make (M : Arg [@mode m] [@alloc a]) :
+    S [@mode m] [@modality p] [@alloc a] with type t := M.t
 
   module%template.portable
     [@modality p] Make_using_comparator
       (M : Arg_with_comparator
-    [@mode m] [@modality p]) :
+    [@mode m] [@modality p] [@alloc a]) :
     S
-    [@mode m] [@modality p]
+    [@mode m] [@modality p] [@alloc a]
     with type t := M.t
     with type comparator_witness := M.comparator_witness
 end

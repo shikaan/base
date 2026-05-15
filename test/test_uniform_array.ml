@@ -10,6 +10,12 @@ let%test_unit _ =
   assert (length t = 0)
 ;;
 
+(* [create_nullable_obj_array] *)
+let%test_unit _ =
+  let t = create_nullable_obj_array ~len:0 in
+  assert (length t = 0)
+;;
+
 (* [create] *)
 let%test_unit _ =
   let str = Stdlib.Obj.repr "foo" in
@@ -406,7 +412,7 @@ end = struct
   let%expect_test _ = test (t_of_sexp Float.t_of_sexp (List [ Atom "0" ]))
   let empty = Uniform_array.empty
   let%expect_test _ = test empty ~allow_empty:true
-  let get_empty = Uniform_array.get_empty
+  let get_empty = [%eta1 Uniform_array.get_empty]
   let%expect_test _ = test (get_empty ()) ~allow_empty:true
   let create = Uniform_array.create
   let%expect_test _ = test (create ~len:1 0.)
@@ -467,6 +473,14 @@ end = struct
   let%expect_test _ =
     let t = create_obj_array ~len:1 in
     set t 0 (Stdlib.Obj.repr 0.);
+    test_poly t
+  ;;
+
+  let create_nullable_obj_array = Uniform_array.create_nullable_obj_array
+
+  let%expect_test _ =
+    let t = create_nullable_obj_array ~len:1 in
+    set t 0 (Obj.Nullable.repr 0.);
     test_poly t
   ;;
 

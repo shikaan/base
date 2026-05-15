@@ -42,39 +42,50 @@ let%test _ =
     String.equal (Error.to_string_hum e) (Error.to_string_hum (Error.of_list [ a; b ]))
 ;;
 
-let%expect_test "of_option and lazy variants" =
-  let test f error =
+let%expect_test "of_option, of_or_null, and lazy variants" =
+  let test f_option f_or_null make_error =
     (* make sure we haven't already forced a lazy value that prints *)
     require_equal (module String) "" (expect_test_output ());
-    print_s [%sexp (f (Some "value") ~error : string Or_error.t)];
-    print_s [%sexp (f None ~error : string Or_error.t)]
+    let error = make_error () in
+    print_s [%sexp (f_option (Some "value") ~error : string Or_error.t)];
+    print_s [%sexp (f_option None ~error : string Or_error.t)];
+    let option_output = [%expect.output] in
+    let error = make_error () in
+    print_s [%sexp (f_or_null (Or_null.This "value") ~error : string Or_error.t)];
+    print_s [%sexp (f_or_null Or_null.Null ~error : string Or_error.t)];
+    let or_null_output = [%expect.output] in
+    require_equal (module String) option_output or_null_output;
+    print_string option_output
   in
-  let delay x =
+  let delay x () =
     Lazy.from_fun (fun () ->
       print_endline "- forcing!";
       x)
   in
-  test Or_error.of_option (Error.of_string "oops");
+  test Or_error.of_option Or_error.of_or_null (fun () -> Error.of_string "oops");
   [%expect
     {|
     (Ok value)
     (Error oops)
     |}];
-  test Or_error.of_option_lazy (delay (Error.of_string "oops"));
-  [%expect
-    {|
-    (Ok value)
-    - forcing!
-    (Error oops)
-    |}];
-  test Or_error.of_option_lazy_sexp (delay [%message "oops"]);
+  test Or_error.of_option_lazy Or_error.of_or_null_lazy (delay (Error.of_string "oops"));
   [%expect
     {|
     (Ok value)
     - forcing!
     (Error oops)
     |}];
-  test Or_error.of_option_lazy_string (delay "oops");
+  test
+    Or_error.of_option_lazy_sexp
+    Or_error.of_or_null_lazy_sexp
+    (delay [%message "oops"]);
+  [%expect
+    {|
+    (Ok value)
+    - forcing!
+    (Error oops)
+    |}];
+  test Or_error.of_option_lazy_string Or_error.of_or_null_lazy_string (delay "oops");
   [%expect
     {|
     (Ok value)

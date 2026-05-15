@@ -25,7 +25,7 @@ type%template 'a t = { modal : 'a }
 module Global = struct
   include Modes_intf.Definitions.Global
 
-  type 'a t = { global : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.global = { global : 'a } [@@unboxed]
 
   let%template[@mode local] compare compare a b = compare a.global b.global
   let%template compare compare a b = (compare [@mode local]) compare a b
@@ -178,7 +178,7 @@ end
 module Portable = struct
   include Modes_intf.Definitions.Portable
 
-  type 'a t = { portable : 'a }
+  type 'a t = 'a Basement.Modes.portable = { portable : 'a }
   [@@unboxed] [@@deriving compare ~localize, equal ~localize, hash]
 
   let%template sexp_of_t sexp_of_a { portable } = sexp_of_a portable [@exclave_if_stack a]
@@ -348,7 +348,7 @@ module Portable = struct
 end
 
 module Contended = struct
-  type 'a t = { contended : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.contended = { contended : 'a } [@@unboxed]
 
   let t_of_sexp of_sexp sexp = { contended = of_sexp sexp }
 
@@ -356,35 +356,38 @@ module Contended = struct
 end
 
 module Shared = struct
-  type 'a t = { shared : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.shared = { shared : 'a } [@@unboxed]
 
   let t_of_sexp of_sexp sexp = { shared = of_sexp sexp }
 end
 
 module Portended = struct
-  type 'a t = { portended : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.portended = { portended : 'a } [@@unboxed]
 end
 
 module Many = struct
-  type 'a t = { many : 'a }
+  type 'a t = 'a Basement.Modes.many = { many : 'a }
   [@@unboxed]
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
 end
 
 module Aliased = struct
-  type 'a t = { aliased : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.aliased = { aliased : 'a } [@@unboxed]
+
+  let wrap aliased = { aliased }
+  let unwrap { aliased } = aliased
 end
 
 module Aliased_many = struct
-  type 'a t = { aliased_many : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.aliased_many = { aliased_many : 'a } [@@unboxed]
 end
 
 module Forkable = struct
-  type 'a t = { forkable : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.forkable = { forkable : 'a } [@@unboxed]
 end
 
 module Unyielding = struct
-  type 'a t = { unyielding : 'a }
+  type 'a t = 'a Basement.Modes.unyielding = { unyielding : 'a }
   [@@unboxed]
   [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
 
@@ -392,23 +395,23 @@ module Unyielding = struct
 end
 
 module Stateless = struct
-  type 'a t = { stateless : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.stateless = { stateless : 'a } [@@unboxed]
 end
 
-module Observing = struct
-  type 'a t = { observing : 'a } [@@unboxed]
+module Reading = struct
+  type 'a t = 'a Basement.Modes.reading = { reading : 'a } [@@unboxed]
 end
 
 module Immutable = struct
-  type 'a t = { immutable : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.immutable = { immutable : 'a } [@@unboxed]
 end
 
 module Read = struct
-  type 'a t = { read : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.read = { read : 'a } [@@unboxed]
 end
 
 module Immutable_data = struct
-  type 'a t = { immutable_data : 'a } [@@unboxed]
+  type 'a t = 'a Basement.Modes.immutable_data = { immutable_data : 'a } [@@unboxed]
 end
 
 module At_locality = struct
@@ -648,7 +651,7 @@ module Export = struct
   let unyielding_of_sexp = Unyielding.t_of_sexp
 
   type 'a stateless = 'a Stateless.t = { stateless : 'a } [@@unboxed]
-  type 'a observing = 'a Observing.t = { observing : 'a } [@@unboxed]
+  type 'a reading = 'a Reading.t = { reading : 'a } [@@unboxed]
   type 'a immutable = 'a Immutable.t = { immutable : 'a } [@@unboxed]
   type 'a read = 'a Read.t = { read : 'a } [@@unboxed]
   type 'a immutable_data = 'a Immutable_data.t = { immutable_data : 'a } [@@unboxed]

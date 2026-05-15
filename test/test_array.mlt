@@ -5,8 +5,9 @@ open! Base
 (* first test that we only allow global elements *)
 let local_id (local_ x) = x;;
 
-let k = local_id 42 in
-Array.create_local ~len:10 k
+let k = local_id "42" in
+let _ : string array @ local = Array.create_local ~len:10 k in
+()
 
 [%%expect
   {|

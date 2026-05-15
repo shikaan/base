@@ -4,11 +4,15 @@ open! Import
 module Invariant := Invariant_intf.Definitions
 
 [%%template:
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null_with_imm)]
+
+[%%template:
 type ('ok, 'err) t =
   | Ok of 'ok
   | Error of 'err
 [@@deriving sexp ~stackify, compare ~localize, equal ~localize, globalize]
-[@@kind k = base_non_value]
+[@@kind k = all_ks_non_value]
 
 (** ['ok] is the return type, and ['err] is often an error message string.
 
@@ -50,28 +54,31 @@ val fail : 'err -> (_, 'err) t
 val failf : ('a, unit, string, (_, string) t) format4 -> 'a
 
 [%%template:
-[@@@kind.default k = base_or_null_with_imm]
+[@@@kind.default k = all_ks]
 
 val is_ok : 'ok 'err. (('ok, 'err) t[@kind k]) -> bool
 val is_error : 'ok 'err. (('ok, 'err) t[@kind k]) -> bool]
 
 val ok : 'ok 'err. ('ok, 'err) t -> 'ok option
+val ok_or_null : 'ok 'err. ('ok, 'err) t -> 'ok or_null [@@zero_alloc]
 val ok_exn : 'ok. ('ok, exn) t -> 'ok
 val ok_or_failwith : 'ok. ('ok, string) t -> 'ok
 val error : 'ok 'err. ('ok, 'err) t -> 'err option
+val error_or_null : 'ok 'err. ('ok, 'err) t -> 'err or_null [@@zero_alloc]
 val of_option : 'ok 'err. 'ok option -> error:'err -> ('ok, 'err) t
+val of_or_null : 'ok 'err. 'ok or_null -> error:'err -> ('ok, 'err) t
 val of_option_or_thunk : 'ok 'err. 'ok option -> error:(unit -> 'err) -> ('ok, 'err) t
 val iter : 'ok 'err. ('ok, 'err) t -> f:('ok -> unit) -> unit
 val iter_error : 'ok 'err. ('ok, 'err) t -> f:('err -> unit) -> unit
 
 [%%template:
 [@@@mode.default m = (global, local)]
-[@@@kind ko = base_or_null_with_imm]
+[@@@kind ko = all_ks]
 
 val return : 'ok 'err. 'ok -> (('ok, 'err) t[@kind ko])
 [@@zero_alloc_if_local m] [@@kind ko]
 
-[@@@kind.default ki = base_or_null_with_imm, ko = ko]
+[@@@kind.default ki = all_ks, ko = ko]
 
 val bind
   : 'a 'b 'err.
@@ -84,7 +91,7 @@ val map : 'a 'b 'err. (('a, 'err) t[@kind ki]) -> f:('a -> 'b) -> (('b, 'err) t[
 val%template map_error
   : 'ok 'err 'c.
   (('ok, 'err) t[@kind k]) -> f:('err -> 'c) -> (('ok, 'c) t[@kind k])
-[@@kind k = base_or_null_with_imm] [@@alloc __ @ m = (heap_global, stack_local)]
+[@@kind k = all_ks] [@@alloc __ @ m = (heap_global, stack_local)]
 
 (** Returns [Ok] if both are [Ok] and [Error] otherwise. *)
 val combine
@@ -136,8 +143,8 @@ module Export : sig
     | Error of 'err
 
   [%%template:
-  [@@@kind.default k = base_or_null_with_imm]
+  [@@@kind.default k = all_ks]
 
   val is_ok : 'ok 'err. (('ok, 'err) t[@kind k]) -> bool
   val is_error : 'ok 'err. (('ok, 'err) t[@kind k]) -> bool]
-end
+end]

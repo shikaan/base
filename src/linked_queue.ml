@@ -133,6 +133,8 @@ let of_array array =
   t
 ;;
 
+let of_iarray iarray = of_array (Iarray.unsafe_to_array__promise_no_mutation iarray)
+
 let init len ~f =
   let t = create () in
   for i = 0 to len - 1 do
@@ -153,6 +155,7 @@ let to_array t =
     arr
 ;;
 
+let to_iarray t = Iarray.unsafe_of_array__promise_no_mutation (to_array t)
 let t_of_sexp a_of_sexp sexp = of_list (list_of_sexp a_of_sexp sexp)
 let sexp_of_t sexp_of_a t = sexp_of_list sexp_of_a (to_list t)
 

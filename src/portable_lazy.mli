@@ -19,7 +19,7 @@ type 'a t = 'a Basement.Portable_lazy.t
 val from_val : 'a. 'a -> 'a t
 
 (** [from_fun f] returns a suspension of the function [f]. Note that [f] must be
-    [portable], as it may be run by any domain. *)
+    [portable], as it may be run on any thread. *)
 val from_fun : 'a. (unit -> 'a) -> 'a t
 
 (** [from_fun_fixed f] returns a suspension of the {i fix-point} function [f], which takes

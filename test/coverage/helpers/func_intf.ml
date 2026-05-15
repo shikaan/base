@@ -21,19 +21,19 @@ module type%template [@mode m = (local, global)] Func = sig
   val outputs : ('input, 'output) t -> 'output list
 
   val map
-    :  ('input1, 'output1) t
+    : 'input1 'input2 'output1 'output2.
+    ('input1, 'output1) t
     -> i:('input1 -> 'input2)
     -> o:('output1 -> 'output2)
     -> ('input2, 'output2) t
 
   val apply
-    :  ('input, 'output) t
-    -> (module With_compare with type t = 'input)
-    -> 'input
-    -> 'output
+    : 'input 'output.
+    ('input, 'output) t -> (module With_compare with type t = 'input) -> 'input -> 'output
 
   val apply2
-    :  ('a, ('b, 'c) t) t
+    : 'a 'b 'c.
+    ('a, ('b, 'c) t) t
     -> (module With_compare with type t = 'a)
     -> (module With_compare with type t = 'b)
     -> 'a
@@ -41,7 +41,8 @@ module type%template [@mode m = (local, global)] Func = sig
     -> 'c
 
   val apply3
-    :  ('a, ('b, ('c, 'd) t) t) t
+    : 'a 'b 'c 'd.
+    ('a, ('b, ('c, 'd) t) t) t
     -> (module With_compare with type t = 'a)
     -> (module With_compare with type t = 'b)
     -> (module With_compare with type t = 'c)
@@ -51,7 +52,8 @@ module type%template [@mode m = (local, global)] Func = sig
     -> 'd
 
   val injective
-    :  ('a, 'b) t
+    : 'a 'b.
+    ('a, 'b) t
     -> (module With_compare with type t = 'a)
     -> (module Adjustable.S with type t = 'b)
     -> 'a list

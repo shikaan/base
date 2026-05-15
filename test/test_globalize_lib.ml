@@ -1,6 +1,27 @@
 open! Base
 open! Import
 
+let%expect_test "maybe_globalize" =
+  (* [Expect_test_helpers_base.print_endline] requires a global string, for regexes. *)
+  let print_endline : string -> unit = Stdio.print_endline in
+  print_endline
+    ((maybe_globalize [@alloc stack])
+       (fun _ -> assert false)
+       ((String.init [@alloc stack]) 10 ~f:(Fn.const 'c')));
+  [%expect {| cccccccccc |}];
+  print_endline
+    ((maybe_globalize [@alloc heap])
+       (fun x ->
+         print_endline "globalize_string";
+         globalize_string x)
+       ((String.init [@alloc stack]) 10 ~f:(Fn.const 'd')));
+  [%expect
+    {|
+    globalize_string
+    dddddddddd
+    |}]
+;;
+
 let%expect_test "bool_true" =
   printf "%b" (globalize_bool true);
   [%expect {| true |}]

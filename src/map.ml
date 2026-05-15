@@ -670,18 +670,18 @@ module Tree0 = struct
 
   let[@inline] rec split_gen t x ~compare_key =
     match t with
-    | Empty -> Empty, None, Empty
+    | Empty -> Empty, Null, Empty
     | Leaf { key = k; data = d } ->
-      let cmp = compare_key k in
+      let cmp = compare_key x k in
       if cmp = 0
-      then Empty, Some (k, d), Empty
+      then Empty, This (k, d), Empty
       else if cmp < 0
-      then Empty, None, t
-      else t, None, Empty
+      then Empty, Null, t
+      else t, Null, Empty
     | Node { left = l; key = k; data = d; right = r; weight = _ } ->
-      let cmp = compare_key k in
+      let cmp = compare_key x k in
       if cmp = 0
-      then l, Some (k, d), r
+      then l, This (k, d), r
       else if cmp < 0
       then (
         let ll, maybe, lr = split_gen l x ~compare_key in
@@ -691,7 +691,10 @@ module Tree0 = struct
         join l k d rl, maybe, rr)
   ;;
 
-  let split t x ~compare_key = split_gen t x ~compare_key:(fun y -> compare_key x y)
+  let split t x ~compare_key =
+    let left, maybe, right = split_gen t x ~compare_key in
+    left, Or_null.to_option maybe, right
+  ;;
 
   (* This function does not really reinsert [x], but just arranges so that [split]
      produces the equivalent tree in the first place. *)
@@ -703,17 +706,17 @@ module Tree0 = struct
         ~compare_key:
           (match into with
            | `Left ->
-             fun y ->
+             fun x y ->
                (match compare_key x y with
                 | 0 -> 1
                 | res -> res)
            | `Right ->
-             fun y ->
+             fun x y ->
                (match compare_key x y with
                 | 0 -> -1
                 | res -> res))
     in
-    assert (Option.is_none boundary_opt);
+    assert (Or_null.is_null boundary_opt);
     left, right
   ;;
 
@@ -798,29 +801,48 @@ module Tree0 = struct
       if c = 0 then Some d else find (if c < 0 then l else r) x ~compare_key
   ;;
 
-  let add_multi t ~key ~data ~compare_key =
-    let data = data :: Option.value (find t key ~compare_key) ~default:[] in
-    set ~key ~data t ~compare_key
+  let rec find_or_null t x ~compare_key =
+    match t with
+    | Empty -> Null
+    | Leaf { key = v; data = d } -> if compare_key x v = 0 then This d else Null
+    | Node { left = l; key = v; data = d; right = r; weight = _ } ->
+      let c = compare_key x v in
+      if c = 0 then This d else find_or_null (if c < 0 then l else r) x ~compare_key
   ;;
 
   let find_multi t x ~compare_key =
-    match find t x ~compare_key with
-    | None -> []
-    | Some l -> l
+    match find_or_null t x ~compare_key with
+    | Null -> []
+    | This l -> l
+  ;;
+
+  let add_multi t ~key ~data ~compare_key =
+    let data = data :: find_multi t key ~compare_key in
+    set ~key ~data t ~compare_key
   ;;
 
   let find_exn =
-    let if_not_found key ~sexp_of_key =
-      raise (Not_found_s (List [ Atom "Map.find_exn: not found"; sexp_of_key key ]))
+    let if_not_found key ~sexp_of_key ~here =
+      raise
+        (Not_found_s
+           (List
+              (Atom "Map.find_exn: not found"
+               :: sexp_of_key key
+               ::
+               (if Source_code_position0.is_dummy here
+                then []
+                else [ Source_code_position0.sexp_of_t here ]))))
     in
-    let rec find_exn t x ~compare_key ~sexp_of_key =
+    let rec find_exn t x ~compare_key ~sexp_of_key ~here =
       match t with
-      | Empty -> if_not_found x ~sexp_of_key
+      | Empty -> if_not_found x ~sexp_of_key ~here
       | Leaf { key = v; data = d } ->
-        if compare_key x v = 0 then d else if_not_found x ~sexp_of_key
+        if compare_key x v = 0 then d else if_not_found x ~sexp_of_key ~here
       | Node { left = l; key = v; data = d; right = r; weight = _ } ->
         let c = compare_key x v in
-        if c = 0 then d else find_exn (if c < 0 then l else r) x ~compare_key ~sexp_of_key
+        if c = 0
+        then d
+        else find_exn (if c < 0 then l else r) x ~compare_key ~sexp_of_key ~here
     in
     (* named to preserve symbol in compiled binary *)
     find_exn
@@ -999,6 +1021,42 @@ module Tree0 = struct
         if phys_equal l' l then t else bal l' v d r)
       else (
         let r' = change r key ~f ~compare_key in
+        if phys_equal r' r then t else bal l v d r')
+  ;;
+
+  let rec change_or_null t key ~f ~compare_key =
+    match t with
+    | Empty ->
+      (match f Null with
+       | Null -> Empty
+       | This data -> Leaf { key; data })
+    | Leaf { key = v; data = d } ->
+      let c = compare_key key v in
+      if c = 0
+      then (
+        match f (This d) with
+        | Null -> Empty
+        | This d' -> Leaf { key = v; data = d' })
+      else if c < 0
+      then (
+        let l' = change_or_null Empty key ~f ~compare_key in
+        if phys_equal l' t then t else bal l' v d Empty)
+      else (
+        let r' = change_or_null Empty key ~f ~compare_key in
+        if phys_equal r' t then t else bal Empty v d r')
+    | Node { left = l; key = v; data = d; right = r; weight = w } ->
+      let c = compare_key key v in
+      if c = 0
+      then (
+        match f (This d) with
+        | Null -> concat_unchecked l r
+        | This data -> Node { left = l; key; data; right = r; weight = w })
+      else if c < 0
+      then (
+        let l' = change_or_null l key ~f ~compare_key in
+        if phys_equal l' l then t else bal l' v d r)
+      else (
+        let r' = change_or_null r key ~f ~compare_key in
         if phys_equal r' r then t else bal l v d r')
   ;;
 
@@ -1199,6 +1257,28 @@ module Tree0 = struct
   let filter_keys t ~f = filteri t ~f:(fun ~key ~data:_ -> f key) [@nontail]
   let filter_map t ~f = filter_mapi t ~f:(fun ~key:_ ~data -> f data) [@nontail]
 
+  let rec filter_mapi_or_null t ~f =
+    match t with
+    | Empty -> Empty
+    | Leaf { key = v; data = d } ->
+      (match f ~key:v ~data:d with
+       | This new_data -> Leaf { key = v; data = new_data }
+       | Null -> Empty)
+    | Node { left = l; key = v; data = d; right = r; weight = _ } ->
+      let l' = filter_mapi_or_null l ~f in
+      let new_data = f ~key:v ~data:d in
+      let r' = filter_mapi_or_null r ~f in
+      (match new_data with
+       | This new_data -> join l' v new_data r'
+       | Null -> concat_and_balance_unchecked l' r')
+  ;;
+
+  let filter_map_or_null t ~f =
+    filter_mapi_or_null t ~f:(fun ~key:_ ~data -> f data) [@nontail]
+  ;;
+
+  let filter_opt t = filter_map t ~f:Fn.id
+
   let partition_mapi t ~f =
     let t1, t2 =
       fold
@@ -1237,7 +1317,8 @@ module Tree0 = struct
         in
         mk l't keep_data_t r't, mk l'f (not keep_data_t) r'f
     in
-    loop t ~f
+    let l, r = loop t ~f in
+    l, r
   ;;
 
   let partition_tf t ~f = partitioni_tf t ~f:(fun ~key:_ ~data -> f data) [@nontail]
@@ -1268,7 +1349,8 @@ module Tree0 = struct
             let prefix, suffix = split_n_nontrivial right (n - left_len - 1) in
             join left key data prefix, suffix)
       in
-      split_n_nontrivial t n)
+      let prefix, suffix = split_n_nontrivial t n in
+      prefix, suffix)
   ;;
 
   module Enum0 : Enum with type ('k, 'v, 'cmp) tree := ('k, 'v, 'cmp) tree = struct
@@ -1706,11 +1788,11 @@ module Tree0 = struct
     =
     let inclusive_bound side t bound =
       let compare_key = Comparator.compare comparator in
-      let l, maybe, r = split t bound ~compare_key in
+      let l, maybe, r = split_gen t bound ~compare_key in
       let t = side (l, r) in
       match maybe with
-      | None -> t
-      | Some (key, data) -> set t ~key ~data ~compare_key
+      | Null -> t
+      | This (key, data) -> set t ~key ~data ~compare_key
     in
     match order with
     | `Increasing_key ->
@@ -1779,7 +1861,7 @@ module Tree0 = struct
              remove acc k v)
         | ( Node { left = l; key = k; data = v; right = r; weight = _ }
           , Node { left = l'; key = k'; data = v'; right = r'; weight = _ } )
-          when compare_key k k' = 0 ->
+          when phys_equal k k' || compare_key k k' = 0 ->
           let acc = loop l l' acc in
           let acc = delta acc k v v' in
           loop r r' acc
@@ -2148,12 +2230,14 @@ module Tree0 = struct
             { left = tree1_left; key; data = tree1_data; right = tree1_right; weight = _ }
         , _ ) ->
         (* Find the corresponding key in [tree2] and merge. *)
-        let tree2_left, tree2_maybe_data, tree2_right = split tree2 key ~compare_key in
+        let tree2_left, tree2_maybe_data, tree2_right =
+          split_gen tree2 key ~compare_key
+        in
         let left = merge tree1_left tree2_left in
         let right = merge tree1_right tree2_right in
         (match tree2_maybe_data with
-         | None -> when_unmatched_first_key ~key ~data:tree1_data ~left ~right
-         | Some (_, tree2_data) ->
+         | Null -> when_unmatched_first_key ~key ~data:tree1_data ~left ~right
+         | This (_, tree2_data) ->
            when_matched
              ~key
              tree1_data
@@ -2728,6 +2812,10 @@ module Accessors = struct
     like t (Tree0.change t.tree key ~f ~compare_key:(compare_key t)) [@nontail]
   ;;
 
+  let change_or_null t key ~f =
+    like t (Tree0.change_or_null t.tree key ~f ~compare_key:(compare_key t)) [@nontail]
+  ;;
+
   let update t key ~f =
     like t (Tree0.update t.tree key ~f ~compare_key:(compare_key t)) [@nontail]
   ;;
@@ -2739,15 +2827,17 @@ module Accessors = struct
     Modes.Global.unwrap result, like t new_t
   ;;
 
-  let find_exn t key =
+  let find_exn ?(here = Stdlib.Lexing.dummy_pos) t key =
     Tree0.find_exn
       t.tree
       key
       ~compare_key:(compare_key t)
       ~sexp_of_key:(Comparator.sexp_of_t t.comparator)
+      ~here
   ;;
 
   let find t key = Tree0.find t.tree key ~compare_key:(compare_key t)
+  let find_or_null t key = Tree0.find_or_null t.tree key ~compare_key:(compare_key t)
 
   let remove t key =
     like_maybe_no_op t (Tree0.remove t.tree key ~compare_key:(compare_key t)) [@nontail]
@@ -2791,6 +2881,21 @@ module Accessors = struct
 
   let filter_mapi t ~f =
     let tree = Tree0.filter_mapi t.tree ~f in
+    like t tree [@nontail]
+  ;;
+
+  let filter_map_or_null t ~f =
+    let tree = Tree0.filter_map_or_null t.tree ~f in
+    like t tree [@nontail]
+  ;;
+
+  let filter_mapi_or_null t ~f =
+    let tree = Tree0.filter_mapi_or_null t.tree ~f in
+    like t tree [@nontail]
+  ;;
+
+  let filter_opt t =
+    let tree = Tree0.filter_opt t.tree in
     like t tree [@nontail]
   ;;
 
@@ -2879,8 +2984,8 @@ module Accessors = struct
   let sumi m t ~f = Tree0.sumi m t.tree ~f
 
   let split t k =
-    let l, maybe, r = Tree0.split t.tree k ~compare_key:(compare_key t) in
-    like t l, maybe, like t r
+    let l, maybe, r = Tree0.split_gen t.tree k ~compare_key:(compare_key t) in
+    like t l, Or_null.to_option maybe, like t r
   ;;
 
   let split_and_reinsert_boundary t ~into k =
@@ -3155,6 +3260,10 @@ module Tree = struct
     Tree0.change t key ~f ~compare_key:(Comparator.compare comparator)
   ;;
 
+  let change_or_null ~comparator t key ~f =
+    Tree0.change_or_null t key ~f ~compare_key:(Comparator.compare comparator)
+  ;;
+
   let update ~comparator t key ~f =
     Tree0.update t key ~f ~compare_key:(Comparator.compare comparator)
   ;;
@@ -3166,16 +3275,21 @@ module Tree = struct
     Modes.Global.unwrap result, tree
   ;;
 
-  let find_exn ~comparator t key =
+  let find_exn ~comparator ?(here = Stdlib.Lexing.dummy_pos) t key =
     Tree0.find_exn
       t
       key
       ~compare_key:(Comparator.compare comparator)
       ~sexp_of_key:(Comparator.sexp_of_t comparator)
+      ~here
   ;;
 
   let find ~comparator t key =
     Tree0.find t key ~compare_key:(Comparator.compare comparator)
+  ;;
+
+  let find_or_null ~comparator t key =
+    Tree0.find_or_null t key ~compare_key:(Comparator.compare comparator)
   ;;
 
   let remove ~comparator t key =
@@ -3207,6 +3321,9 @@ module Tree = struct
   let filteri t ~f = Tree0.filteri t ~f
   let filter_map t ~f = Tree0.filter_map t ~f
   let filter_mapi t ~f = Tree0.filter_mapi t ~f
+  let filter_map_or_null t ~f = Tree0.filter_map_or_null t ~f
+  let filter_mapi_or_null t ~f = Tree0.filter_mapi_or_null t ~f
+  let filter_opt t = Tree0.filter_opt t
   let partition_mapi t ~f = Tree0.partition_mapi t ~f
   let partition_map t ~f = Tree0.partition_map t ~f
   let partition_result t = Tree0.partition_result t

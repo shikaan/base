@@ -46,7 +46,7 @@ include%template Monad.S [@kind value_or_null mod maybe_null] with type 'a t := 
 (** [empty] is a sequence with no elements. *)
 val empty : 'a. 'a t
 
-val get_empty : 'a. unit -> 'a t
+val get_empty : 'a. unit -> 'a t [@@zero_alloc]
 
 (** [next] returns the next element of a sequence and the next tail if the sequence is not
     finished. *)

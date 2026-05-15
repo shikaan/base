@@ -68,7 +68,7 @@ type ('k, 'v) t := (('k, 'v) t[@kind k v])
 [@@@kind.default k v]
 
 val empty : ('k, 'v) t
-val get_empty : 'k 'v. unit -> ('k, 'v) t
+val get_empty : 'k 'v. unit -> ('k, 'v) t [@@zero_alloc]
 val is_empty : 'k 'v. ('k, 'v) t -> bool
 
 (** Checks invariants, raising an exception if any invariants fail. *)

@@ -881,7 +881,7 @@ struct
       Int64.( > ) upper_bound_plus_epsilon max_value)
   ;;
 
-  let%test ("bigger than upper bound overflows" [@tags "no-wasm"]) =
+  let%test ("bigger than upper bound overflows" [@tags "no-wasm", "x86-only"]) =
     bigger_than_upper_bound_overflows ~wasm:false
   ;;
 

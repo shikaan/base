@@ -13,6 +13,7 @@ val empty : _ t
 
 (** For obtaining uncontended access to [empty] from a portable function. *)
 val get_empty : unit -> _ t
+[@@zero_alloc]
 
 (** Initially filled with all [None] *)
 val create : 'a. len:int -> 'a t

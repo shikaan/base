@@ -8,9 +8,10 @@ module Trusted : sig
   type 'a t
 
   val empty : 'a. 'a t
-  val get_empty : 'a. unit -> 'a t
+  val get_empty : 'a. unit -> 'a t [@@zero_alloc]
   val unsafe_create_uninitialized : 'a. len:int -> 'a t
   val create_obj_array : 'a. len:int -> 'a t
+  val create_nullable_obj_array : 'a. len:int -> 'a t
   val create : 'a. len:int -> 'a -> 'a t
   val singleton : 'a. 'a -> 'a t
   val get : 'a. 'a t -> int -> 'a [@@zero_alloc]
@@ -53,6 +54,7 @@ end = struct
   let[@inline] get_empty () = { arr = Obj_array.get_empty () }
   let unsafe_create_uninitialized ~len = { arr = Obj_array.create_zero ~len }
   let create_obj_array ~len = { arr = Obj_array.create_zero ~len }
+  let create_nullable_obj_array ~len = { arr = Obj_array.create_zero ~len }
   let create ~len x = { arr = Obj_array.create ~len (repr x) }
   let singleton x = { arr = Obj_array.singleton (repr x) }
   let swap t i j : unit = Obj_array.swap t.arr i j

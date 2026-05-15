@@ -6,6 +6,7 @@ open! Import
 type t = char [@@deriving enumerate, globalize, sexp ~stackify, sexp_grammar]
 
 include%template Identifiable.S [@mode local] [@modality portable] with type t := t
+include%template Stringable.S [@mode local] [@alloc stack] with type t := t
 
 include Invariant.S with type t := t
 module O : Comparisons.Infix with type t := t
@@ -84,7 +85,6 @@ module Caseless : sig
   type nonrec t = t [@@deriving hash, sexp ~stackify, sexp_grammar]
 
   include%template Comparable.S [@modality portable] with type t := t
-
-  include Ppx_compare_lib.Equal.S__local with type t := t
-  include Ppx_compare_lib.Comparable.S__local with type t := t
+  include%template Ppx_compare_lib.Equal.S [@mode local] with type t := t
+  include%template Ppx_compare_lib.Comparable.S [@mode local] with type t := t
 end

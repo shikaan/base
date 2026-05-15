@@ -19,6 +19,7 @@ open! Import0
 
 open struct
   module Sys = Sys0
+  module Char = Char0
   module Uchar = Uchar0
   module Bytes = Bytes0
 end
@@ -75,7 +76,59 @@ let%template[@alloc a = (heap, stack)] append s1 s2 =
 let ( ^ ) s1 s2 = append s1 s2
 let capitalize = Stdlib.String.capitalize_ascii
 let compare = Stdlib.String.compare
-let escaped = Stdlib.String.escaped
+
+let%template[@alloc a = (heap, stack)] escaped s =
+  let n = ref 0 in
+  for i = 0 to length s - 1 do
+    n
+    := !n
+       +
+       match unsafe_get s i with
+       | '\"' | '\\' | '\n' | '\t' | '\r' | '\b' -> 2
+       | ' ' .. '~' -> 1
+       | _ -> 4
+  done;
+  if [@exclave_if_stack a] !n = length s
+  then s
+  else (
+    let s' = (Bytes.create [@alloc a]) !n in
+    n := 0;
+    for i = 0 to length s - 1 do
+      (match unsafe_get s i with
+       | ('\"' | '\\') as c ->
+         Bytes.unsafe_set s' !n '\\';
+         incr n;
+         Bytes.unsafe_set s' !n c
+       | '\n' ->
+         Bytes.unsafe_set s' !n '\\';
+         incr n;
+         Bytes.unsafe_set s' !n 'n'
+       | '\t' ->
+         Bytes.unsafe_set s' !n '\\';
+         incr n;
+         Bytes.unsafe_set s' !n 't'
+       | '\r' ->
+         Bytes.unsafe_set s' !n '\\';
+         incr n;
+         Bytes.unsafe_set s' !n 'r'
+       | '\b' ->
+         Bytes.unsafe_set s' !n '\\';
+         incr n;
+         Bytes.unsafe_set s' !n 'b'
+       | ' ' .. '~' as c -> Bytes.unsafe_set s' !n c
+       | c ->
+         let a = Char.to_int c in
+         Bytes.unsafe_set s' !n '\\';
+         incr n;
+         Bytes.unsafe_set s' !n (Char.unsafe_of_int (48 + (a / 100)));
+         incr n;
+         Bytes.unsafe_set s' !n (Char.unsafe_of_int (48 + (a / 10 mod 10)));
+         incr n;
+         Bytes.unsafe_set s' !n (Char.unsafe_of_int (48 + (a mod 10))));
+      incr n
+    done;
+    Bytes.unsafe_to_string ~no_mutation_while_string_reachable:s')
+;;
 
 let%template[@alloc a = (heap, stack)] make n c =
   Bytes.unsafe_to_string
@@ -119,7 +172,7 @@ let get_utf_8_uchar b i =
   (* raises if [i] is not a valid index. *)
   let get = unsafe_get_uint8 in
   let max = length b - 1 in
-  match Char0.unsafe_of_int b0 with
+  match Char.unsafe_of_int b0 with
   (* See The Unicode Standard, Table 3.7 *)
   | '\x00' .. '\x7F' -> dec_ret 1 b0
   | '\xC2' .. '\xDF' ->

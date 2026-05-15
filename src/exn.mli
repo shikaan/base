@@ -58,7 +58,7 @@ val to_string_mach : t -> string
     not. *)
 val protectx : 'a 'b. f:('a -> 'b) -> 'a -> finally:('a -> unit) -> 'b
 
-val protect : f:(unit -> 'a) -> finally:(unit -> unit) -> 'a
+val protect : 'a. f:(unit -> 'a) -> finally:(unit -> unit) -> 'a
 
 (** [handle_uncaught ~exit f] catches an exception escaping [f] and prints an error
     message to stderr. Exits with return code 1 if [exit] is [true], and returns unit

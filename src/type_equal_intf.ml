@@ -296,9 +296,9 @@ module type Type_equal = sig
 
         [same t1 t2 = is_some (same_witness t1 t2)]. *)
 
-    val same : _ t -> _ t -> bool
-    val same_witness : 'a 'b. 'a t -> 'b t -> ('a, 'b) equal option
-    val same_witness_exn : 'a 'b. 'a t -> 'b t -> ('a, 'b) equal
+    val same : _ t -> _ t -> bool [@@zero_alloc]
+    val same_witness : 'a 'b. 'a t -> 'b t -> ('a, 'b) equal option [@@zero_alloc]
+    val same_witness_exn : 'a 'b. 'a t -> 'b t -> ('a, 'b) equal [@@zero_alloc]
 
     module%template.portable Create0 (T : Arg0) : S0 with type t := T.t
     module%template.portable Create1 (T : Arg1) : S1 with type 'a t := 'a T.t

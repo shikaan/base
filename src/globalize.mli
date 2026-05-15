@@ -8,6 +8,22 @@
 
     Further globalize functions can be generated with `ppx_globalize`. *)
 
+(*_ It's tempting to make [maybe_globalize] templated over the mode of the input too,
+    however it's not clear whether we'll be able to support that in the future (once it
+    works via first-class language features rather than ppx_template).
+
+    The input can't be mode-polymorphic over (local, global) as there is no way to tell if
+    a value is local or global at runtime. Specifically, we can't look at whether it's on
+    the heap as a proxy because borrowing will mean that things on the heap can be truly
+    local.
+
+    The input also can't have its own allocator acting as a mode witness. It's plausible
+    allocators will be covariant over their mode parameter but that means you would be
+    able to pass a heap allocator in as the witness of a local value, so it wouldn't get
+    globalized, effectively magic-ing something from local to global. *)
+  val%template maybe_globalize : ('a -> 'a) -> 'a -> 'a
+  [@@alloc a @ l = (heap_global, stack_local)]
+
 val globalize_bool : bool -> bool
 val globalize_char : char -> char
 val globalize_float : float -> float

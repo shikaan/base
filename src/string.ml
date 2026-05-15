@@ -40,7 +40,7 @@ let unsafe_sub src ~pos ~len =
   else (
     (let dst = (Bytes.create [@alloc a]) len in
      Bytes.unsafe_blit_string ~src ~src_pos:pos ~dst ~dst_pos:0 ~len;
-     Bytes.unsafe_to_string ~no_mutation_while_string_reachable:dst)
+     Bytes.unique_to_string dst)
     [@exclave_if_stack a])
 ;;
 
@@ -60,7 +60,9 @@ let subo ?(pos = 0) ?len src =
       (match len with
        | Some i -> i
        | None -> length src - pos) [@exclave_if_stack a]
-;;]
+;;
+
+let copy t = (unsafe_sub [@alloc a]) t ~pos:0 ~len:(length t) [@exclave_if_stack a]]
 
 let rec contains_unsafe t ~pos ~end_ char =
   pos < end_
@@ -725,8 +727,14 @@ let%template[@alloc a = (heap, stack)] drop_prefix t n =
     ~when_n_exceeds_length:"" [@exclave_if_stack a]
 ;;
 
-let drop_suffix t n =
-  wrap_sub_n ~name:"drop_suffix" t n ~pos:0 ~len:(length t - n) ~when_n_exceeds_length:""
+let%template[@alloc a = (heap, stack)] drop_suffix t n =
+  (wrap_sub_n [@alloc a])
+    ~name:"drop_suffix"
+    t
+    n
+    ~pos:0
+    ~len:(length t - n)
+    ~when_n_exceeds_length:"" [@exclave_if_stack a]
 ;;
 
 let%template[@alloc a = (heap, stack)] prefix t n =
@@ -1800,7 +1808,7 @@ module Escaping = struct
     let rec loop p cnt =
       if p < 0 || Char.( <> ) str.[p] escape_char then cnt else loop (p - 1) (cnt + 1)
     in
-    loop (pos - 1) 0
+    loop (pos - 1) 0 [@nontail]
   ;;
 
   (*=In an escaped string, any char is either `Escaping, `Escaped or `Literal. For
@@ -1872,7 +1880,7 @@ module Escaping = struct
           then None
           else loop i (update_escape_status str ~escape_char i status))
       in
-      loop pos (escape_status str ~escape_char pos))
+      loop pos (escape_status str ~escape_char pos) [@nontail])
   ;;
 
   let index_from_exn str ~escape_char pos char =
@@ -1881,7 +1889,7 @@ module Escaping = struct
       raise_s
         (Sexp.message
            "index_from_exn: not found"
-           [ "str", sexp_of_t str
+           [ "str", sexp_of_t (globalize str)
            ; "escape_char", sexp_of_char escape_char
            ; "pos", sexp_of_int pos
            ; "char", sexp_of_char char
@@ -1908,7 +1916,7 @@ module Escaping = struct
           then Some pos
           else loop (pos - escape_chars - 1))
       in
-      loop pos)
+      loop pos [@nontail])
   ;;
 
   let rindex_from_exn str ~escape_char pos char =
@@ -1917,7 +1925,7 @@ module Escaping = struct
       raise_s
         (Sexp.message
            "rindex_from_exn: not found"
-           [ "str", sexp_of_t str
+           [ "str", sexp_of_t (globalize str)
            ; "escape_char", sexp_of_char escape_char
            ; "pos", sexp_of_int pos
            ; "char", sexp_of_char char

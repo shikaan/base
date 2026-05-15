@@ -37,7 +37,7 @@ include struct
     { mutable table : (('k, 'v) Avltree.t[@kind k v]) array
     ; mutable length : int
     ; growth_allowed : bool
-    ; hashable : 'k Hashable.t [@globalized]
+    ; hashable : 'k Hashable.t
     ; num_iterators__do_not_read_write_directly : int Atomic.t
     }
 
@@ -664,6 +664,12 @@ let update t id ~f =
   ()
 ;;]
 
+let change_or_null t id ~f =
+  match f (find_or_null t id) with
+  | Null -> remove t id
+  | This data -> set t ~key:id ~data
+;;
+
 let incr_by ~remove_if_zero t key by =
   if remove_if_zero
   then
@@ -1042,6 +1048,7 @@ module Accessors = struct
   let add = add
   let add_exn = add_exn
   let change = change
+  let change_or_null = change_or_null
   let update = update
   let update_and_return = update_and_return
   let add_multi = add_multi

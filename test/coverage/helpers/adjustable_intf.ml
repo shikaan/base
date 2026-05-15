@@ -14,6 +14,6 @@ module type Adjustable = sig
     include Definitions
   end
 
-  val unique : (module S with type t = 'a) -> 'a -> 'a list -> 'a
-  val non_overlapping : (module S with type t = 'a) -> 'a list -> 'a list
+  val unique : 'a. (module S with type t = 'a) -> 'a -> 'a list -> 'a
+  val non_overlapping : 'a. (module S with type t = 'a) -> 'a list -> 'a list
 end

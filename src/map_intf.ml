@@ -98,6 +98,7 @@ module Definitions = struct
        and type ('fn, 'key, _, 'cmp) accessor := ('key, 'cmp, 'fn) access_options
 
     val invariants : ('k, 'cmp, ('k, 'v, 'cmp) t -> bool) access_options
+    val find_or_null : ('k, 'cmp, ('k, 'v, 'cmp) t -> 'k key -> 'v or_null) access_options
 
     val iteri_until
       :  ('k, 'v, _) t
@@ -237,6 +238,14 @@ module Definitions = struct
        and type ('key, 'data, 'cmp) t := ('key, 'data, 'cmp) t
        and type ('fn, 'key, _, 'cmp) transformer := ('key, 'cmp, 'fn) access_options
 
+    (** Like [change] but [f] receives and returns ['v or_null] instead of ['v option]. *)
+    val change_or_null
+      : ( 'k
+          , 'cmp
+          , ('k, 'v, 'cmp) t -> 'k key -> f:('v or_null -> 'v or_null) -> ('k, 'v, 'cmp) t
+          )
+          access_options
+
     val split
       : ( 'k
           , 'cmp
@@ -310,6 +319,18 @@ module Definitions = struct
             -> both:('k key, 'v1, 'v2, 'v3) When_matched.t
             -> ('k, 'v3, 'cmp) t )
           access_options
+
+    val filter_map_or_null
+      :  ('k, 'v1, 'cmp) t
+      -> f:('v1 -> 'v2 or_null)
+      -> ('k, 'v2, 'cmp) t
+
+    val filter_mapi_or_null
+      :  ('k, 'v1, 'cmp) t
+      -> f:(key:'k key -> data:'v1 -> 'v2 or_null)
+      -> ('k, 'v2, 'cmp) t
+
+    val filter_opt : ('k, 'v option, 'cmp) t -> ('k, 'v, 'cmp) t
 
     module%template.portable Make_applicative_traversals
         (A : Applicative.Lazy_applicative) : sig
@@ -663,7 +684,34 @@ module type Map = sig
   end
 
   (** [Map] is a functional data structure (balanced binary tree) implementing finite maps
-      over a totally-ordered domain, called a "key". *)
+      over a totally-ordered domain, called a "key".
+
+      {2 Mode crossing of maps}
+
+      In OxCaml, maps mode cross contention as long as the ['key] and ['value] types do,
+      and portability as long as ['key] and ['value] do
+      {i and if the {!Comparator.t} is portable}. The portability of the comparator is
+      witnessed by the {i kind} of the ['cmp] comparator witness type; if ['cmp] has kind
+      [value mod portable], then it is known that the {!Comparator.t} is portable, and if
+      it has kind [value] then it is not known.
+
+      To expose that your type's comparator is portable, add the [[@modality portable]]
+      template attribute to the functor you are using to make the comparator and to the
+      return signature of the functor in your signature. For example, write the following
+      in your structure:
+
+      {[
+        include%template Comparable.Make [@modality portable] (Arg)
+      ]}
+
+      and the following in your signature:
+
+      {[
+        include%template Comparable.S [@modality portable] with type t := t
+      ]}
+
+      Note that this applies to other functors and signatures that include {!Comparable},
+      such as {!Identifiable}. *)
 
   type (!'key, +!'value, !'cmp) t [@@sexp.phantom: 'cmp] [@@deriving globalize, sexp_of]
 
@@ -973,6 +1021,13 @@ module type Map = sig
       [find m key = f (find t key)]. *)
   val change : ('k, 'v, 'cmp) t -> 'k -> f:('v option -> 'v option) -> ('k, 'v, 'cmp) t
 
+  (** Like [change] but [f] receives and returns ['v or_null] instead of ['v option]. *)
+  val change_or_null
+    :  ('k, 'v, 'cmp) t
+    -> 'k
+    -> f:('v or_null -> 'v or_null)
+    -> ('k, 'v, 'cmp) t
+
   (** [update t key ~f] returns a new map which is the same as [t] but sets the value
       corresponding to [key] to the result of [f].
 
@@ -993,9 +1048,12 @@ module type Map = sig
   (** Returns [Some value] bound to the given key, or [None] if none exists. *)
   val find : ('k, 'v, 'cmp) t -> 'k -> 'v option
 
+  (** Like [find] but returns [or_null] instead of [option]. *)
+  val find_or_null : ('k, 'v, 'cmp) t -> 'k -> 'v or_null
+
   (** Returns the value bound to the given key, raising [Stdlib.Not_found] or
       [Not_found_s] if none exists. *)
-  val find_exn : ('k, 'v, 'cmp) t -> 'k -> 'v
+  val find_exn : ?here:Stdlib.Lexing.position -> ('k, 'v, 'cmp) t -> 'k -> 'v
 
   (** Returns a new map with any binding for the key in question removed. *)
   val remove : ('k, 'v, 'cmp) t -> 'k -> ('k, 'v, 'cmp) t
@@ -1092,6 +1150,21 @@ module type Map = sig
     :  ('k, 'v1, 'cmp) t
     -> f:(key:'k -> data:'v1 -> 'v2 option)
     -> ('k, 'v2, 'cmp) t
+
+  (** Like [filter_map] but with a function returning [or_null] instead of [option]. *)
+  val filter_map_or_null
+    :  ('k, 'v1, 'cmp) t
+    -> f:('v1 -> 'v2 or_null)
+    -> ('k, 'v2, 'cmp) t
+
+  (** Like [filter_mapi] but with a function returning [or_null] instead of [option]. *)
+  val filter_mapi_or_null
+    :  ('k, 'v1, 'cmp) t
+    -> f:(key:'k -> data:'v1 -> 'v2 or_null)
+    -> ('k, 'v2, 'cmp) t
+
+  (** Returns a new map with [None] data filtered out and [Some v] data unwrapped to [v]. *)
+  val filter_opt : ('k, 'v option, 'cmp) t -> ('k, 'v, 'cmp) t
 
   (** [partition_mapi t ~f] returns two new [t]s, with each key in [t] appearing in
       exactly one of the resulting maps depending on its mapping in [f]. *)

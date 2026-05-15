@@ -311,6 +311,22 @@ module [@kind k = value] [@alloc a @ l = (stack_local, heap_global)] _ = struct
       ([%test_eq: int option] [@alloc stack]) actual expected [@nontail])
   ;;
 
+  let%test_unit [%name name "find_map_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f x =
+        let v = Elt.to_int x in
+        if v % 3 = 0 then This (v * 2) else Null
+      in
+      let actual =
+        (List.find_map_or_null [@mode l l]) (Harness.unbox list) ~f
+        |> (Or_null.to_option [@mode l])
+      in
+      let expected =
+        Stdlib.List.find_map (fun x -> f (Elt.unbox x) |> Or_null.to_option) list
+      in
+      ([%test_eq: int option] [@alloc stack]) actual expected [@nontail])
+  ;;
+
   let%test_unit [%name name "find_mapi"] =
     Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
       let f i x =
@@ -320,6 +336,22 @@ module [@kind k = value] [@alloc a @ l = (stack_local, heap_global)] _ = struct
       let actual = (List.find_mapi [@kind k] [@mode l l]) (Harness.unbox list) ~f in
       let expected = Stdlib.List.find_mapi (fun i x -> f i x) list in
       ([%test_eq: Elt.boxed option] [@alloc stack]) actual expected [@nontail])
+  ;;
+
+  let%test_unit [%name name "find_mapi_or_null"] =
+    Base_quickcheck.Test.run_exn ~config (module Harness) ~f:(fun list ->
+      let f i x =
+        let v = Elt.to_int x in
+        if i % 2 = 1 && v > 5 then This (i + v) else Null
+      in
+      let actual =
+        (List.find_mapi_or_null [@mode l l]) (Harness.unbox list) ~f
+        |> (Or_null.to_option [@mode l])
+      in
+      let expected =
+        Stdlib.List.find_mapi (fun i x -> f i (Elt.unbox x) |> Or_null.to_option) list
+      in
+      ([%test_eq: int option] [@alloc stack]) actual expected [@nontail])
   ;;
 
   let%test_unit [%name name "to_list"] =

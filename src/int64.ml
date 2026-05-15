@@ -43,13 +43,13 @@ external float_of_bits
   :  t
   -> float
   = "caml_int64_float_of_bits" "caml_int64_float_of_bits_unboxed"
-[@@unboxed] [@@noalloc]
+[@@unboxed] [@@noalloc] [@@builtin]
 
 external bits_of_float
   :  float
   -> t
   = "caml_int64_bits_of_float" "caml_int64_bits_of_float_unboxed"
-[@@unboxed] [@@noalloc]
+[@@unboxed] [@@noalloc] [@@builtin]
 
 external shift_right_logical : t -> int -> t = "%int64_lsr"
 external shift_right : t -> int -> t = "%int64_asr"
@@ -72,13 +72,13 @@ let one = one
 let zero = zero
 
 external to_float : t -> float = "caml_int64_to_float" "caml_int64_to_float_unboxed"
-[@@unboxed] [@@noalloc]
+[@@unboxed] [@@noalloc] [@@builtin]
 
 external of_float_unchecked
   :  float
   -> t
   = "caml_int64_of_float" "caml_int64_of_float_unboxed"
-[@@unboxed] [@@noalloc]
+[@@unboxed] [@@noalloc] [@@builtin]
 
 let of_float f =
   if Float_replace_polymorphic_compare.( >= ) f float_lower_bound

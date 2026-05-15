@@ -3,12 +3,16 @@ module Either = Either0
 include Result0
 
 [%%template
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null_with_imm)]
+
+[%%template
 [@@@mode.default m = (global, local)]
-[@@@kind ko = base_or_null_with_imm]
+[@@@kind ko = all_ks]
 
 let[@kind ko] return x : (_ t[@kind ko]) = Ok x [@exclave_if_local m]
 
-[@@@kind.default ki = base_or_null_with_imm, ko = ko]
+[@@@kind.default ki = all_ks, ko = ko]
 
 let bind x ~f : (_ t[@kind ko]) =
   match (x : (_ t[@kind ki])) with
@@ -44,7 +48,7 @@ let%template map_error (type a) (t : ((a, _) t[@kind k])) ~f : ((a, _) t[@kind k
   match[@exclave_if_stack a] t with
   | Ok _ as x -> x
   | Error x -> Error (f x)
-[@@kind k = base_or_null_with_imm] [@@alloc a @ m = (heap_global, stack_local)]
+[@@kind k = all_ks] [@@alloc a @ m = (heap_global, stack_local)]
 ;;
 
 module%template Error =
@@ -62,7 +66,7 @@ Monad.Make2 [@kind value_or_null mod maybe_null] [@mode local] [@modality portab
   end)
 
 [%%template
-[@@@kind.default k = base_or_null_with_imm]
+[@@@kind.default k = all_ks]
 
 let is_ok : (_ t[@kind k]) -> bool = function
   | Ok _ -> true
@@ -79,15 +83,31 @@ let ok = function
   | Error _ -> None
 ;;
 
+let ok_or_null = function
+  | Ok x -> This x
+  | Error _ -> Null
+;;
+
 let error = function
   | Ok _ -> None
   | Error x -> Some x
+;;
+
+let error_or_null = function
+  | Ok _ -> Null
+  | Error x -> This x
 ;;
 
 let of_option opt ~error =
   match opt with
   | Some x -> Ok x
   | None -> Error error
+;;
+
+let of_or_null or_null ~error =
+  match or_null with
+  | This x -> Ok x
+  | Null -> Error error
 ;;
 
 let of_option_or_thunk opt ~error =
@@ -144,7 +164,7 @@ module Export = struct
     | Error of 'err
 
   [%%template
-  [@@@kind.default k = base_or_null_with_imm]
+  [@@@kind.default k = all_ks]
 
   let is_error = (is_error [@kind k])
   let is_ok = (is_ok [@kind k])]
@@ -168,4 +188,4 @@ let combine_errors l =
   [@exclave_if_stack a]
 ;;]
 
-let combine_errors_unit l = map (combine_errors l) ~f:(fun (_ : unit list) -> ())
+let combine_errors_unit l = map (combine_errors l) ~f:(fun (_ : unit list) -> ())]

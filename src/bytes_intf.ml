@@ -28,11 +28,9 @@ module type Bytes = sig
 
   (** {1 Common Interfaces} *)
 
-  include Blit.S with type t := t
-
+  include%template Blit.S [@mode unique read] [@alloc stack] with type t := t
   include%template Comparable.S [@mode local] with type t := t
-
-  include Stringable.S with type t := t
+  include%template Stringable.S [@mode local] [@alloc stack] with type t := t
 
   (** Note that [pp] allocates in order to preserve the state of the byte sequence it was
       initially called with. *)
@@ -40,40 +38,47 @@ module type Bytes = sig
 
   include Invariant.S with type t := t
 
-  module To_string : sig
-    val sub : (t, string) Blit.sub
-    val subo : (t, string) Blit.subo
+  module%template To_string : sig
+    [@@@alloc.default a = (heap, stack)]
+
+    val sub : ((t, string) Blit.sub[@mode unique read] [@alloc a])
+    val subo : ((t, string) Blit.subo[@mode unique read] [@alloc a])
   end
 
-  module From_string : Blit.S_distinct with type src := string and type dst := t
-
-  (** [create len] returns a newly-allocated and uninitialized byte sequence of length
-      [len]. No guarantees are made about the contents of the return value. *)
-  val%template create : int -> t
-  [@@alloc __ @ m = (heap_global, stack_local)]
+  module%template From_string :
+    Blit.S_distinct
+    [@mode unique] [@alloc stack]
+    with type src := string
+     and type dst := t
 
   (** [create_local] is like [create], but returns a stack-allocated [Bytes.t]. *)
   val create_local : int -> t
   [@@zero_alloc]
 
+  [%%template:
+  [@@@alloc.default a @ l = (heap @ global, stack @ local)]
+
+  (** [create len] returns a newly-allocated and uninitialized byte sequence of length
+      [len]. No guarantees are made about the contents of the return value. *)
+  val create : int -> t
+  [@@zero_alloc_if_stack a]
+
   (** [make len c] returns a newly-allocated byte sequence of length [len] filled with the
       byte [c]. *)
-  val%template make : int -> char -> t
-  [@@alloc a @ m = (heap_global, stack_local)]
+  val make : int -> char -> t
+  [@@zero_alloc_if_stack a]
 
   (** [map f t] applies function [f] to every byte, in order, and builds the byte sequence
       with the results returned by [f]. *)
   val map : t -> f:(char -> char) -> t
-
-  val%template map : t -> f:(char -> char) -> t [@@alloc stack]
 
   (** Like [map], but passes each character's index to [f] along with the char. *)
   val mapi : t -> f:(int -> char -> char) -> t
 
   (** [copy t] returns a newly-allocated byte sequence that contains the same bytes as
       [t]. *)
-  val%template copy : t -> t
-  [@@alloc a @ m = (heap_global, stack_local)]
+  val copy : t -> t
+  [@@zero_alloc_if_stack a]
 
   (** [init len ~f] returns a newly-allocated byte sequence of length [len] with index [i]
       in the sequence being initialized with the result of [f i]. *)
@@ -82,6 +87,7 @@ module type Bytes = sig
   (** [of_char_list l] returns a newly-allocated byte sequence where each byte in the
       sequence corresponds to the byte in [l] at the same index. *)
   val of_char_list : char list -> t
+  [@@zero_alloc_if_stack a]]
 
   (** [length t] returns the number of bytes in [t]. *)
   external length : (t[@local_opt]) -> int = "%bytes_length"
@@ -165,11 +171,15 @@ module type Bytes = sig
       so [~target:"a-z"] means the literal characters ['a'], ['-'], and ['z']. *)
   val tr_multi : target:string -> replacement:string -> (t -> unit) Staged.t
 
+  [%%template:
+  [@@@alloc.default a @ l = (heap @ global, stack @ local)]
+
   (** [to_list t] returns the bytes in [t] as a list of chars. *)
   val to_list : t -> char list
+  [@@zero_alloc_if_stack a]
 
   (** [to_array t] returns the bytes in [t] as an array of chars. *)
-  val to_array : t -> char array
+  val to_array : t -> char array]
 
   (** [fold a ~f ~init:b] is [f a1 (f a2 (...))] *)
   val fold : t -> init:'acc -> f:('acc -> char -> 'acc) -> 'acc
@@ -261,6 +271,9 @@ module type Bytes = sig
     :  no_mutation_while_string_reachable:(t[@local_opt])
     -> (string[@local_opt])
     = "%bytes_to_string"
+
+  (** Safely convert a uniquely-owned bytes to a uniquely-owned string. *)
+  external unique_to_string : (t[@local_opt]) -> (string[@local_opt]) = "%bytes_to_string"
 
   (** Unsafely convert a shared string to a byte sequence that should not be mutated.
 

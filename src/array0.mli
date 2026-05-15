@@ -49,13 +49,19 @@ val concat : 'a. 'a array list -> 'a array]
 
 val max_length : int
 val create_float_uninitialized : len:int -> float array
-val blit : src:'a array -> src_pos:int -> dst:'a array -> dst_pos:int -> len:int -> unit
-val make_matrix : dimx:int -> dimy:int -> 'a -> 'a array array
 
-val%template fold_right : 'a array -> f:('a -> 'b -> 'b) -> init:'b -> 'b
-[@@mode m = (uncontended, shared)]
+include sig
+  [@@@implicit_kind: 'a]
+  [@@@implicit_kind: 'b]
 
-val stable_sort : 'a array -> compare:('a -> 'a -> int) -> unit
+  val blit : src:'a array -> src_pos:int -> dst:'a array -> dst_pos:int -> len:int -> unit
+  val make_matrix : dimx:int -> dimy:int -> 'a -> 'a array array
+
+  val%template fold_right : 'a array -> f:('a -> 'b -> 'b) -> init:'b -> 'b
+  [@@mode m = (uncontended, shared)]
+
+  val stable_sort : 'a array -> compare:('a -> 'a -> int) -> unit
+end
 
 [%%template:
 [@@@kind.default k' = (base_or_null, value_or_null mod external64)]

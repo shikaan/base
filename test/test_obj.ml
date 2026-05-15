@@ -77,7 +77,7 @@ let%test_unit "tagged integers" =
   [%test_result: bool] (Nullable.is_int r) ~expect:true;
   [%test_result: bool] (Nullable.is_immediate r) ~expect:true;
   [%test_result: bool] (Nullable.is_block r) ~expect:false;
-  let r' = Sys.opaque_identity r in
+  let r' = Nullable.dup r in
   [%test_result: int Or_null.t] (Nullable.Expert.obj r') ~expect:x;
   [%test_result: stack_or_heap] (Nullable.stack_or_heap r') ~expect:Immediate;
   [%test_result: uniform_or_mixed]
@@ -93,7 +93,7 @@ let%test_unit "blocks" =
   [%test_result: bool] (Nullable.is_int r) ~expect:false;
   [%test_result: bool] (Nullable.is_immediate r) ~expect:false;
   [%test_result: bool] (Nullable.is_block r) ~expect:true;
-  let r' = Sys.opaque_identity r in
+  let r' = Nullable.dup r in
   [%test_result: string Or_null.t] (Nullable.Expert.obj r') ~expect:s;
   [%test_result: stack_or_heap] (Nullable.stack_or_heap r') ~expect:Heap;
   [%test_result: uniform_or_mixed]
@@ -108,7 +108,7 @@ let%test_unit "nulls" =
   [%test_result: bool] (Nullable.is_int r) ~expect:false;
   [%test_result: bool] (Nullable.is_immediate r) ~expect:true;
   [%test_result: bool] (Nullable.is_block r) ~expect:false;
-  let r' = Sys.opaque_identity r in
+  let r' = Nullable.dup r in
   [%test_result: int Or_null.t] (Nullable.Expert.obj r') ~expect:Null;
   [%test_result: stack_or_heap] (Nullable.stack_or_heap r') ~expect:Immediate;
   [%test_result: uniform_or_mixed]
@@ -139,6 +139,28 @@ let%test_unit "[or_null] fields" =
   Nullable.Expert.set_field x 0 (Nullable.repr y.a);
   Nullable.Expert.set_field x 1 (Nullable.repr y.b);
   [%test_result: record] (Nullable.Expert.obj x) ~expect:y
+;;
+
+let%expect_test "[to_or_null] / [of_or_null] / [nullable]" =
+  let test (type a) (value : a) =
+    let nullable = Obj.Nullable.repr value in
+    let or_null = Obj.Nullable.to_or_null nullable in
+    let round_trip = Obj.Nullable.of_or_null or_null in
+    require (phys_equal nullable round_trip);
+    match Obj.Nullable.to_or_null nullable with
+    | Null -> require (Obj.Nullable.is_null nullable)
+    | This obj ->
+      require (not (Obj.Nullable.is_null nullable));
+      require (phys_equal (Obj.nullable obj) nullable)
+  in
+  test Null;
+  [%expect {| |}];
+  test 5;
+  [%expect {| |}];
+  test "lorem ipsum";
+  [%expect {| |}];
+  test [ 1.; 2.; 3. ];
+  [%expect {| |}]
 ;;
 
 module%test [@name "[new_mixed_block]"] _ = struct

@@ -177,6 +177,24 @@ module type Comparable = sig
         let now = .. in
         let someday = .. in
         Date.O.(now > someday)
+      ]}
+
+      {2 Mode-crossing comparators}
+
+      To make the [Comparator.t] for a type (and hence maps built with that comparator)
+      cross portability in OxCaml, add the [[@portable]] template attribute to
+      [Comparable.Make] and [Comparable.S]. For example:
+
+      {[
+        module Foo : sig
+          type t [@@deriving compare, sexp]
+
+          include%template Comparable.S [@modality portable] with type t := t
+        end = struct
+          type t = ... [@@deriving compare, sexp]
+
+          include%template functor Comparable.Make [@modality portable]
+        end
       ]} *)
 
   include With_compare
@@ -191,9 +209,17 @@ module type Comparable = sig
       type t [@@deriving compare [@mode.explicit m]]
     end) : Infix with type t := T.t
 
+  module%template.portable Infix_with_zero_alloc (T : sig
+      type t [@@deriving (compare [@mode.explicit m]) ~zero_alloc]
+    end) : Infix_with_zero_alloc with type t := T.t
+
   module%template.portable Comparisons (T : sig
       type t [@@deriving compare [@mode.explicit m]]
     end) : Comparisons [@mode m] with type t := T.t
+
+  module%template.portable Comparisons_with_zero_alloc (T : sig
+      type t [@@deriving (compare [@mode.explicit m]) ~zero_alloc]
+    end) : Comparisons_with_zero_alloc [@mode m] with type t := T.t
 
   (** Inherit comparability from a component. *)
   module%template.portable Inherit
@@ -206,6 +232,10 @@ module type Comparable = sig
          val component : t -> C.t
        end) : S [@mode m] with type t := T.t
 
+  (** Note that the template parameter of the [Make] functor controls not just the
+      portability of the argument and return modules, but also the {i mode crossing} of
+      the created [Comparator.t] (and hence the mode crossing of {!Map.t} with this type
+      as a key). See {!Map} for more information *)
   module%template.portable
     [@modality p] Make (T : sig
       type t [@@deriving (compare [@mode.explicit m]), sexp_of]

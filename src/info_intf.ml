@@ -223,7 +223,7 @@ module Definitions = struct
         using escape sequences.
 
         [1] this will be true in most cases except when created out of [of_string], which
-        simply gets stored as a string, not a sexp. *)
+            simply gets stored as a string, not a sexp. *)
     module Utf8 : sig
       (** [to_string_hum] forces the lazy message, which might be an expensive operation.
 

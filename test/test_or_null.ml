@@ -21,6 +21,14 @@ end = struct
     [%expect {| ("hello world") |}]
   ;;
 
+  let all = all_of_or_null
+
+  let%expect_test "all" =
+    print_s
+      [%sexp ([%all: [ `A | `B | `C of bool t ] t] : [ `A | `B | `C of bool t ] t list)];
+    [%expect {| (() (A) (B) ((C ())) ((C (false))) ((C (true)))) |}]
+  ;;
+
   let hash_fold_t = hash_fold_t
 
   let%expect_test "hash" =

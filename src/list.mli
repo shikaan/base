@@ -6,8 +6,12 @@ open! Import
 module Invariant := Invariant_intf.Definitions
 module Constructors : module type of List0.Constructors
 
+[%%template:
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
+
 type%template 'a t = ('a Constructors.t[@kind k])
-[@@kind k = base_non_value]
+[@@kind k = all_ks_non_value]
 [@@deriving compare ~localize, equal ~localize, sexp_of ~stackify]
 
 type 'a t = 'a list
@@ -57,7 +61,7 @@ val singleton : 'a. 'a -> 'a t
 (*_ Unmangled [t] gets shadowed below, so we alias a mangled [t] to it first. *)
 type 'a t := 'a t [@@kind.explicit value_or_null]
 
-[@@@kind k = base_or_null]
+[@@@kind k = all_ks]
 
 type 'a t := ('a t[@kind.explicit k])
 
@@ -94,16 +98,16 @@ val filter : 'a. 'a t -> f:('a -> bool) -> 'a t
 val rev_append : 'a. 'a t -> 'a t -> 'a t
 
 (** List reversal. *)
-val rev : 'a. 'a t -> 'a t]
+val rev : 'a. 'a t -> 'a t [@@mode u = (aliased, unique)]]
 
 [%%template:
 [@@@mode.default l = (local, global)]
 
 val find_or_null : 'a t -> f:('a -> bool) -> 'a or_null
-val nth_or_null : 'a t -> int -> 'a or_null]
+val nth_or_null : 'a t -> int -> 'a or_null [@@zero_alloc]]
 
 [%%template:
-[@@@kind.default ka = base_or_null, kb = base_or_null]
+[@@@kind.default ka = all_ks, kb = all_ks]
 [@@@mode.default la = (local, global)]
 [@@@alloc.default __ @ lb = (heap_global, stack_local)]
 
@@ -131,7 +135,7 @@ val concat_mapi
   ('a t[@kind ka]) -> f:(int -> 'a -> ('b t[@kind kb])) -> ('b t[@kind kb])]
 
 [%%template:
-[@@@kind.default ka = base_or_null]
+[@@@kind.default ka = all_ks]
 [@@@mode.default li = (global, local)]
 [@@@alloc.default __ @ lo = (heap_global, stack_local)]
 
@@ -142,7 +146,7 @@ val filter_map_or_null : 'a 'b. ('a t[@kind ka]) -> f:('a -> 'b or_null) -> 'b t
 val filter_mapi_or_null : 'a 'b. ('a t[@kind ka]) -> f:(int -> 'a -> 'b or_null) -> 'b t]
 
 [%%template:
-[@@@kind.default ka = base_or_null, kb = base_or_null]
+[@@@kind.default ka = all_ks, kb = all_ks]
 [@@@mode.default la = (local, global), lb = (local, global)]
 
 val fold : 'a 'b. ('a t[@kind ka]) -> init:'b -> f:('b -> 'a -> 'b) -> 'b
@@ -257,7 +261,9 @@ val merge : 'a. 'a t -> 'a t -> compare:('a -> 'a -> int) -> 'a t
 [@@@mode.default l = (global, local)]
 
 val hd : 'a. 'a t -> 'a option
+val hd_or_null : 'a t -> 'a or_null [@@zero_alloc]
 val tl : 'a. 'a t -> 'a t option
+val tl_or_null : 'a t -> 'a t or_null [@@zero_alloc]
 
 (** Returns the first element of the given list. Raises if the list is empty. *)
 val hd_exn : 'a. 'a t -> 'a
@@ -272,12 +278,28 @@ val findi_exn : 'a. 'a t -> f:(int -> 'a -> bool) -> int * 'a
     [Stdlib.Not_found] or [Not_found_s] if there is no such element. *)
 val find_exn : 'a. 'a t -> f:('a -> bool) -> 'a]
 
+(** Like [find_map] but with a function returning [or_null] instead of [option]. *)
+val%template find_map_or_null : 'a t -> f:('a -> 'b or_null) -> 'b or_null
+[@@mode li = (local, global), lo = (local, global)]
+
+(** Like [find_map_or_null], but raises [Stdlib.Not_found] or [Not_found_s] if [f] always
+    returns [Null]. *)
+val find_map_or_null_exn : 'a t -> f:('a -> 'b or_null) -> 'b
+
 (** Returns the first evaluation of [f] that returns [Some]. Raises [Stdlib.Not_found] or
     [Not_found_s] if [f] always returns [None]. *)
 val find_map_exn : 'a 'b. 'a t -> f:('a -> 'b option) -> 'b
 
 (** Like [find_map_exn], but passes the index as an argument. *)
 val find_mapi_exn : 'a 'b. 'a t -> f:(int -> 'a -> 'b option) -> 'b
+
+(** Like [find_mapi] but with a function returning [or_null] instead of [option]. *)
+val%template find_mapi_or_null : 'a t -> f:(int -> 'a -> 'b or_null) -> 'b or_null
+[@@mode li = (local, global), lo = (local, global)]
+
+(** Like [find_mapi_or_null], but raises [Stdlib.Not_found] or [Not_found_s] if [f] always
+    returns [Null]. *)
+val find_mapi_or_null_exn : 'a t -> f:(int -> 'a -> 'b or_null) -> 'b
 
 (** [folding_map] is a version of [map] that threads an accumulator through calls to [f].
     The accumulator is threaded left-to-right through the list, but unlike [fold_map] only
@@ -472,9 +494,12 @@ val contains_dup : 'a. 'a t -> compare:('a -> 'a -> int) -> bool
     guarantees about order. O(n log n) time complexity. *)
 val find_all_dups : 'a. 'a t -> compare:('a -> 'a -> int) -> 'a list
 
+[%%template:
+[@@@mode.default l = (global, local)]
+
 (** [all_equal] returns a single element of the list that is equal to all other elements,
     or [None] if no such element exists. *)
-val all_equal : 'a. 'a t -> equal:('a -> 'a -> bool) -> 'a option
+val all_equal : 'a. 'a t -> equal:('a -> 'a -> bool) -> 'a option]
 
 (** [range ?stride ?start ?stop start_i stop_i] is the list of integers from [start_i] to
     [stop_i], stepping by [stride]. If [stride] < 0 then we need [start_i] > [stop_i] for
@@ -508,6 +533,10 @@ val range'
     other words, [filter_opt l] = [filter_map ~f:Fn.id l]. *)
 val filter_opt : 'a. 'a option t -> 'a t
 
+(** Like [filter_opt] but for [or_null] instead of [option]. In other words,
+    [filter_or_null l] = [filter_map_or_null ~f:Fn.id l]. *)
+val filter_or_null : 'a or_null t -> 'a t
+
 [@@@mode lo = l]
 [@@@mode.default li = (global, local)]
 
@@ -518,10 +547,6 @@ val rev_filter_map : 'a 'b. 'a t -> f:('a -> 'b option) -> 'b t
 (** rev_filter_mapi is just like [rev_filter_map], but it also passes in the index of each
     element as the first argument to the mapped function. Tail-recursive. *)
 val rev_filter_mapi : 'a 'b. 'a t -> f:(int -> 'a -> 'b option) -> 'b t
-
-(** Like [filter_opt] but for [or_null] instead of [option]. In other words,
-    [filter_or_null l] = [filter_map_or_null ~f:Fn.id l]. *)
-val filter_or_null : 'a or_null t -> 'a t
 
 (** Like [rev_filter_map] but with a function returning [or_null] instead of [option]. *)
 val rev_filter_map_or_null : 'a t -> f:('a -> 'b or_null) -> 'b t
@@ -695,4 +720,4 @@ end
 
 module Private : sig
   val max_non_tailcall : int
-end
+end]

@@ -22,17 +22,21 @@ let max_non_tailcall =
 
 let unzip = Stdlib.List.split
 
+[%%template
+[@@@kind_set.define
+  all_ks_non_value
+  = ( base_non_value
+    , value_or_null & value_or_null
+    , value_or_null & value_or_null & value_or_null
+    , value_or_null & value_or_null & value_or_null & value_or_null )]
+
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
+
 module%template Constructors = struct
   type 'a t =
     | []
     | ( :: ) of 'a * ('a t[@kind.explicit k])
-  [@@kind.explicit
-    k
-    = ( base_non_value
-      , value_or_null & value_or_null
-      , value_or_null & value_or_null & value_or_null
-      , value_or_null & value_or_null & value_or_null & value_or_null )]
-  [@@deriving compare ~localize, equal ~localize]
+  [@@kind.explicit k = all_ks_non_value] [@@deriving compare ~localize, equal ~localize]
 
   type 'a t = 'a list =
     | []
@@ -70,12 +74,7 @@ let is_empty = function
 ;;
 
 [%%template
-[@@@kind.default
-  k
-  = ( base_or_null
-    , value_or_null & value_or_null
-    , value_or_null & value_or_null & value_or_null
-    , value_or_null & value_or_null & value_or_null & value_or_null )]
+[@@@kind.default k = all_ks]
 
 open struct
   type nonrec 'a t = ('a t[@kind k]) =
@@ -122,54 +121,46 @@ let rev_append l1 l2 =
     | a :: l -> rev_append_loop l (a :: l2) [@exclave_if_stack a]
   in
   rev_append_loop l1 l2 [@exclave_if_stack a]
-[@@alloc a @ l = (stack_local, heap_global)]
+[@@mode u = (aliased, unique)] [@@alloc a @ l = (stack_local, heap_global)]
 ;;
 
 let rev l =
   match l with
   | ([] | [ _ ]) as res -> res
   | x :: y :: rest ->
-    (rev_append [@alloc a] [@kind k]) rest [ y; x ] [@exclave_if_stack a]
-[@@alloc a @ l = (stack_local, heap_global)]
+    (rev_append [@mode u] [@alloc a] [@kind k]) rest [ y; x ] [@exclave_if_stack a]
+[@@mode u = (aliased, unique)] [@@alloc a @ l = (stack_local, heap_global)]
 ;;
 
 let for_all t ~f = not ((exists [@kind k] [@mode l]) t ~f:(fun x -> not (f x)))
 [@@mode l = (local, global)]
-;;
+;;]
 
-[@@@kind ka = k]
-
-[%%template
-[@@@kind.default
-  ka = ka
-  , kb
-    = ( base_or_null
-      , value_or_null & base_or_null
-      , value_or_null & value_or_null & value_or_null
-      , value_or_null & value_or_null & value_or_null & value_or_null )]
-
-let fold t ~init ~(f : _ -> _ -> _) =
-  let rec fold_loop ~f acc = function
+let fold (type a b) (t : (a t[@kind ka])) ~(init : b) ~(f : b -> a -> b) : b =
+  let rec fold_loop ~f (acc : b) (l : (a t[@kind ka])) =
+    match l with
     | [] -> acc
     | a :: l ->
       fold_loop ~f (f acc a) l [@exclave_if_local mb ~reasons:[ May_return_local ]]
   in
   fold_loop ~f init t [@nontail] [@exclave_if_local mb]
 [@@mode ma = (local, global), mb = (local, global)]
-;;]
-
-open Constructors
-
-[@@@kind.default kb = base_or_null]
+(* list.ml's [foldi] implementation uses an unboxed record in the accumulator to track
+   both [accum] and [i] so we add [value_or_null] & all_ks]. *)
+[@@kind ka = all_ks, kb = (all_ks, value_or_null & all_ks)]
+;;
 
 let rev_map =
   let rec rmap_f f accu : (_ t[@kind ka]) -> (_ t[@kind kb]) = function
     | [] -> accu
     | a :: l -> rmap_f f (f a :: accu) l [@exclave_if_stack ab]
   in
-  fun l ~f -> rmap_f f [] l [@exclave_if_stack ab]
-[@@mode ma = (local, global)] [@@alloc ab @ mb = (stack_local, heap_global)]
-;;]
+  fun (type a b) (l : (a t[@kind ka])) ~f : (b t[@kind kb]) ->
+    rmap_f f [] l [@exclave_if_stack ab]
+[@@mode ma = (local, global)]
+[@@alloc ab @ mb = (stack_local, heap_global)]
+[@@kind ka = all_ks, kb = all_ks]
+;;
 
 let rec fold2_ok l1 l2 ~init ~(f : _ -> _ -> _ -> _) =
   match l1, l2 with
@@ -303,4 +294,4 @@ let fold_right2_ok l1 l2 ~(f : _ -> _ -> _ -> _) ~init =
   match l1, l2 with
   | [], [] -> init (* avoid the allocation of [~f] below *)
   | _, _ -> fold2_ok ~f:(fun a b c -> f b c a) ~init (rev l1) (rev l2) [@nontail]
-;;
+;;]

@@ -23,8 +23,11 @@ module type Error = sig
       raises, the exception maintains a reference to the [t] passed in. *)
   val reraise_uncaught : t -> f:(unit -> 'a) -> 'a
 
+  [%%template:
+  [@@@mode.default p = (portable, nonportable)]
+
   val to_info : t -> Info.t
-  val of_info : Info.t -> t
+  val of_info : Info.t -> t]
 end
 
 module type Error_with_extras = sig

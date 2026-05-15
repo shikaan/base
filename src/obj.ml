@@ -6,7 +6,7 @@ external%template magic : 'a 'b. ('a[@local_opt]) -> ('b[@local_opt]) = "%identi
 [@@mode
   c = (uncontended, shared, contended, read, immutable)
   , o = (many, once)
-  , p = (nonportable, shareable, portable, observing, stateless)
+  , p = (nonportable, shareable, portable, reading, stateless)
   , u = (aliased, unique)]
 
 external%template magic_portable : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
@@ -23,7 +23,7 @@ external%template magic_uncontended
 [@@layout_poly]
 [@@mode
   o = (many, once)
-  , p = (nonportable, shareable, portable, observing, stateless)
+  , p = (nonportable, shareable, portable, reading, stateless)
   , u = (aliased, unique)]
 
 external%template magic_many : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
@@ -210,4 +210,16 @@ module Nullable = struct
 
       let is_immediate t = is_int t [@@inline]
     end)
+
+  external of_or_null
+    :  (Stdlib.Obj.t or_null[@local_opt])
+    -> (t[@local_opt])
+    = "%identity"
+
+  external to_or_null
+    :  (t[@local_opt])
+    -> (Stdlib.Obj.t or_null[@local_opt])
+    = "%identity"
 end
+
+external nullable : (t[@local_opt]) -> (Nullable.t[@local_opt]) = "%identity"

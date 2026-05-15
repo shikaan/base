@@ -159,6 +159,29 @@ let%expect_test "update_and_return" =
   [%expect {| ((t ((foo 2))) (x 2)) |}]
 ;;
 
+let%expect_test "Hashtbl.change_or_null" =
+  let t = Hashtbl.create (module String) in
+  let print () = print_s [%sexp (t : int Hashtbl.M(String).t)] in
+  (* Insert a new key: Null -> This v *)
+  Hashtbl.change_or_null t "a" ~f:(fun _ -> This 1);
+  print ();
+  [%expect {| ((a 1)) |}];
+  (* Update an existing key: This v1 -> This v2 *)
+  Hashtbl.change_or_null t "a" ~f:(function
+    | This v -> This (v + 10)
+    | Null -> Null);
+  print ();
+  [%expect {| ((a 11)) |}];
+  (* Remove an existing key: This v -> Null *)
+  Hashtbl.change_or_null t "a" ~f:(fun _ -> Null);
+  print ();
+  [%expect {| () |}];
+  (* No-op on missing key: Null -> Null *)
+  Hashtbl.change_or_null t "b" ~f:(fun _ -> Null);
+  print ();
+  [%expect {| () |}]
+;;
+
 let%expect_test "smoke tests for templated versions" =
   let module%template StrO = struct
     type t = string option [@@deriving compare, equal, sexp]

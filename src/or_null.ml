@@ -20,16 +20,7 @@ module Optional_syntax = struct
   end
 end
 
-include (
-struct
-  type 'a t = 'a or_null [@@deriving globalize, sexp ~stackify]
-end :
-  sig
-    type 'a t = 'a or_null [@@deriving globalize, sexp ~stackify]
-  end
-  with type 'a t := 'a or_null)
-
-[%%rederive.portable type 'a t = 'a or_null [@@deriving hash]]
+[%%rederive.portable type 'a t = 'a or_null [@@deriving globalize, sexp ~stackify, hash]]
 
 let[@cold] raise_value_exn ~here =
   let error =

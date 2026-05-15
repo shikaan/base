@@ -101,7 +101,8 @@ module type String = sig
   (** [sub] with no bounds checking, and always returns a new copy *)
   val unsafe_sub : t -> pos:int -> len:int -> t
 
-  val subo : ?pos:int -> ?len:int -> t -> t]
+  val subo : ?pos:int -> ?len:int -> t -> t
+  val copy : t -> t]
 
   include%template
     Indexed_container.S0_with_creators
@@ -181,8 +182,7 @@ module type String = sig
     type nonrec t = t [@@deriving hash, sexp ~stackify, sexp_grammar]
 
     include%template Comparable.S [@modality portable] with type t := t
-
-    include Ppx_compare_lib.Comparable.S__local with type t := t
+    include%template Ppx_compare_lib.Comparable.S [@mode local] with type t := t
 
     val is_suffix : t -> suffix:t -> bool
     val is_prefix : t -> prefix:t -> bool
@@ -458,7 +458,7 @@ module type String = sig
   val suffix : t -> int -> t
 
   (** [prefix s n] returns the longest prefix of [s] of length less than or equal to [n]. *)
-  val prefix : t -> int -> t]
+  val prefix : t -> int -> t
 
   (** [drop_suffix s n] drops the longest suffix of [s] of length less than or equal to
       [n]. *)
@@ -466,7 +466,7 @@ module type String = sig
 
   (** [drop_prefix s n] drops the longest prefix of [s] of length less than or equal to
       [n]. *)
-  val drop_prefix : t -> int -> t
+  val drop_prefix : t -> int -> t]
 
   (** Produces the longest common suffix, or [""] if the list is empty. *)
   val common_suffix : t list -> t

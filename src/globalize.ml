@@ -5,6 +5,9 @@
 
 open Basement.Or_null_shim.Export
 
+let%template[@alloc stack] [@inline] maybe_globalize _ value = value
+let%template[@alloc heap] [@inline] maybe_globalize globalize value = globalize value
+
 let globalize_bool = function
   | (true | false) as b -> b
 ;;

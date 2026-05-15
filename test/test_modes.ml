@@ -72,3 +72,13 @@ end = struct
 end
 
 let _ : _ = M.return_at_max
+
+(* Regression test: [At_locality.t] cannot be used to smuggle a [float] into a
+   [non_float]; otherwise the below would segfault. *)
+let%expect_test _ =
+  let store (type a) (a : a) : a array = [| a |] in
+  let arr = store (Modes.At_locality.wrap 0.) in
+  let f = arr.(0) |> Modes.At_locality.unwrap in
+  Stdio.print_s [%sexp (f : float)];
+  [%expect {| 0 |}]
+;;

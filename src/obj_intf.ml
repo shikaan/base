@@ -123,7 +123,7 @@ module type Obj = sig
   [@@mode
     c = (uncontended, shared, contended, read, immutable)
     , o = (many, once)
-    , p = (nonportable, shareable, portable, observing, stateless)
+    , p = (nonportable, shareable, portable, reading, stateless)
     , u = (aliased, unique)]
 
   external%template magic_portable
@@ -143,7 +143,7 @@ module type Obj = sig
   [@@layout_poly]
   [@@mode
     o = (many, once)
-    , p = (nonportable, shareable, portable, observing, stateless)
+    , p = (nonportable, shareable, portable, reading, stateless)
     , u = (aliased, unique)]
 
   external%template magic_many : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
@@ -206,5 +206,17 @@ module type Obj = sig
     (** Tests if the argument is an immediate value (int, variant constructor, or null). *)
     val is_immediate : t -> bool
     [@@zero_alloc]
+
+    external of_or_null
+      :  (Stdlib.Obj.t or_null[@local_opt])
+      -> (t[@local_opt])
+      = "%identity"
+
+    external to_or_null
+      :  (t[@local_opt])
+      -> (Stdlib.Obj.t or_null[@local_opt])
+      = "%identity"
   end
+
+  external nullable : (t[@local_opt]) -> (Nullable.t[@local_opt]) = "%identity"
 end

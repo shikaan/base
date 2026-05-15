@@ -4,6 +4,7 @@
     memory representation and constant-time random access, like an array. *)
 
 open! Import
+open Modes.Export
 
 module Definitions = struct
   module type Operators = sig
@@ -31,7 +32,9 @@ module Definitions = struct
     include%template Binary_searchable.S1 [@mode local] with type 'a t := 'a t
 
     include%template
-      Indexed_container.S1_with_creators [@alloc stack] with type 'a t := 'a t
+      Indexed_container.S1_with_creators
+      [@kind_set.explicit value_or_null] [@alloc stack]
+      with type 'a t := 'a t
 
     val%template map : 'a 'b. 'a t -> f:('a -> 'b) -> 'b t
     [@@kind ki = (value_or_null, float64), ko = (value_or_null, float64)]
@@ -48,6 +51,17 @@ module Definitions = struct
 
     val%template iter : 'a. 'a t -> f:('a -> unit) -> unit
     [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
+    val%template for_all : 'a. 'a t -> f:('a -> bool) -> bool
+    [@@kind ki = value_or_null] [@@mode mi = (global, local)]
+
+    (** Like [find] but returning [or_null] instead of [option]. *)
+    val%template find_or_null : 'a. 'a t -> f:('a -> bool) -> 'a or_null
+    [@@mode m = (global, local)]
+
+    (** Like [findi] but returning [or_null] instead of [option]. *)
+    val%template findi_or_null : 'a. 'a t -> f:(int -> 'a -> bool) -> (int * 'a) or_null
+    [@@mode m = (global, local)]
 
     include Invariant.S1 with type 'a t := 'a t
 
@@ -75,133 +89,153 @@ module Definitions = struct
       = "%array_unsafe_get"
     [@@layout_poly]]
 
-    val last_exn : 'a t -> 'a
+    include sig
+      [@@@implicit_kind: 'a]
 
-    (** Functional update *)
+      val last_exn : 'a t -> 'a
 
-    val set : 'a t -> int -> 'a -> 'a t
-    val update : 'a t -> int -> f:('a -> 'a) -> 'a t
+      (** Functional update *)
 
-    (** Constructors *)
+      val set : 'a t -> int -> 'a -> 'a t
+      val update : 'a t -> int -> f:('a -> 'a) -> 'a t
 
-    val empty : _ t
-    val singleton : 'a -> 'a t
-    val create : len:int -> 'a -> mutate:('a array -> unit) -> 'a iarray
+      (** Constructors *)
 
-    val%template init : 'a. int -> f:(int -> 'a) -> 'a t
-    [@@alloc __ @ m = (heap_global, stack_local)]
+      val empty : _ t
+      val singleton : 'a -> 'a t
+      val create : len:int -> 'a -> mutate:('a array -> unit) -> 'a iarray
 
-    (** Conversions *)
+      val%template init : 'a. int -> f:(int -> 'a) -> 'a t
+      [@@alloc __ @ m = (heap_global, stack_local)]
 
-    val of_sequence : 'a Sequence.t -> 'a t
-    val to_sequence : 'a t -> 'a Sequence.t
-    val of_list_rev : 'a. 'a list -> 'a t
-    val of_list_map : 'a list -> f:('a -> 'b) -> 'b t
-    val of_list_mapi : 'a list -> f:(int -> 'a -> 'b) -> 'b t
-    val of_list_rev_map : 'a list -> f:('a -> 'b) -> 'b t
+      (** Conversions *)
 
-    (** Subsequences *)
+      val of_sequence : 'a Sequence.t -> 'a t
+      val to_sequence : 'a t -> 'a Sequence.t
+      val of_list_rev : 'a. 'a list -> 'a t
+      val of_list_map : 'a list -> f:('a -> 'b) -> 'b t
+      val of_list_mapi : 'a list -> f:(int -> 'a -> 'b) -> 'b t
+      val of_list_rev_map : 'a list -> f:('a -> 'b) -> 'b t
 
-    val prefix : 'a t -> len:int -> 'a t
-    val suffix : 'a t -> len:int -> 'a t
-    val drop_prefix : 'a t -> len:int -> 'a t
-    val drop_suffix : 'a t -> len:int -> 'a t
-    val group : 'a t -> break:('a -> 'a -> bool) -> 'a t t
+      (** Subsequences *)
 
-    (** [split_n t n] returns a pair of iarrays [(first, second)] where [first] contains
-        the first [n] elements of [t] and [second] contains the remaining elements.
+      val prefix : 'a t -> len:int -> 'a t
+      val suffix : 'a t -> len:int -> 'a t
+      val drop_prefix : 'a t -> len:int -> 'a t
+      val drop_suffix : 'a t -> len:int -> 'a t
+      val group : 'a t -> break:('a -> 'a -> bool) -> 'a t t
 
-        - If [n >= length t], returns [(t, empty)].
-        - If [n <= 0], returns [(empty, t)]. *)
-    val split_n : 'a t -> int -> 'a t * 'a t
+      (** [split_n t n] returns a pair of iarrays [(first, second)] where [first] contains
+          the first [n] elements of [t] and [second] contains the remaining elements.
 
-    (** [chunks_of t ~length] returns an iarray of iarrays whose concatenation is equal to
-        the original iarray. Every iarray has [length] elements, except for possibly the
-        last iarray, which may have fewer. [chunks_of] raises if [length <= 0]. *)
-    val chunks_of : 'a t -> length:int -> 'a t t
+          - If [n >= length t], returns [(t, empty)].
+          - If [n <= 0], returns [(empty, t)]. *)
+      val split_n : 'a t -> int -> 'a t * 'a t
 
-    (** Reordering *)
+      (** [chunks_of t ~length] returns an iarray of iarrays whose concatenation is equal
+          to the original iarray. Every iarray has [length] elements, except for possibly
+          the last iarray, which may have fewer. [chunks_of] raises if [length <= 0]. *)
+      val chunks_of : 'a t -> length:int -> 'a t t
 
-    val rev : 'a t -> 'a t
-    val sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
-    val stable_sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
-    val dedup_and_sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
-    val sort_and_group : 'a t -> compare:('a -> 'a -> int) -> 'a t t
-    val is_sorted : 'a t -> compare:('a -> 'a -> int) -> bool
-    val is_sorted_strictly : 'a t -> compare:('a -> 'a -> int) -> bool
+      (** Reordering *)
 
-    (** Combining elements *)
+      val rev : 'a t -> 'a t
+      val sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
+      val stable_sort : 'b t -> compare:('b -> 'b -> int) -> 'b t
+      val dedup_and_sort : 'a t -> compare:('a -> 'a -> int) -> 'a t
+      val sort_and_group : 'a t -> compare:('a -> 'a -> int) -> 'a t t
+      val is_sorted : 'a t -> compare:('a -> 'a -> int) -> bool
+      val is_sorted_strictly : 'a t -> compare:('a -> 'a -> int) -> bool
 
-    val reduce : 'a t -> f:('a -> 'a -> 'a) -> 'a option
-    val reduce_exn : 'a t -> f:('a -> 'a -> 'a) -> 'a
-    val combine_errors : 'a Or_error.t t -> 'a t Or_error.t
-    val combine_errors_unit : unit Or_error.t t -> unit Or_error.t
+      (** Combining elements *)
 
-    [%%template:
-    [@@@kind.default ka = value, kacc = base_or_null]
-    [@@@mode.default li = (global, local), lo = (global, local)]
+      val reduce : 'a t -> f:('a -> 'a -> 'a) -> 'a option
+      val reduce_exn : 'a t -> f:('a -> 'a -> 'a) -> 'a
+      val combine_errors : 'a Or_error.t t -> 'a t Or_error.t
+      val combine_errors_unit : unit Or_error.t t -> unit Or_error.t
 
-    val fold : 'a 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc) -> 'acc
-    val foldi : 'a 'acc. 'a t -> init:'acc -> f:(int -> 'acc -> 'a -> 'acc) -> 'acc
-    val fold_right : 'a 'acc. 'a t -> init:'acc -> f:('a -> 'acc -> 'acc) -> 'acc]
+      [%%template:
+      [@@@kind.default ka = value_or_null, kacc = base_or_null]
+      [@@@kind ka' = ka mod separable]
+      [@@@mode.default li = (global, local), lo = (global, local)]
 
-    val fold_map : 'a t -> init:'acc -> f:('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
-    val fold_mapi : 'a t -> init:'acc -> f:(int -> 'acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
+      val fold : 'a 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc) -> 'acc
+      val foldi : 'a 'acc. 'a t -> init:'acc -> f:(int -> 'acc -> 'a -> 'acc) -> 'acc
+      val fold_right : 'a 'acc. 'a t -> init:'acc -> f:('a -> 'acc -> 'acc) -> 'acc]
 
-    (** Multiple arrays *)
+      val fold_map : 'a t -> init:'acc -> f:('acc -> 'a -> 'acc * 'b) -> 'acc * 'b t
 
-    val zip : 'a t -> 'b t -> ('a * 'b) t option
-    val zip_exn : 'a t -> 'b t -> ('a * 'b) t
-    val unzip : ('a * 'b) t -> 'a t * 'b t
-    val map2_exn : 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t
-    val iter2_exn : 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit
-    val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
+      val fold_mapi
+        :  'a t
+        -> init:'acc
+        -> f:(int -> 'acc -> 'a -> 'acc * 'b)
+        -> 'acc * 'b t
 
-    (** Random elements *)
+      (** Multiple arrays *)
 
-    val random_element : ?random_state:Random.State.t -> 'a t -> 'a option
-    val random_element_exn : ?random_state:Random.State.t -> 'a t -> 'a
+      val zip : 'a t -> 'b t -> ('a * 'b) t option
+      val zip_exn : 'a t -> 'b t -> ('a * 'b) t
+      val unzip : ('a * 'b) t -> 'a t * 'b t
+      val map2_exn : 'a t -> 'b t -> f:('a -> 'b -> 'c) -> 'c t
+      val iter2_exn : 'a t -> 'b t -> f:('a -> 'b -> unit) -> unit
+      val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
 
-    (** Blit operations *)
+      (** Random elements *)
 
-    val sub : 'a t -> pos:int -> len:int -> 'a t
-    val subo : ?pos:int -> ?len:int -> 'a t -> 'a t
+      val random_element : ?random_state:Random.State.t -> 'a t -> 'a option
+      val random_element_exn : ?random_state:Random.State.t -> 'a t -> 'a
 
-    module Of_array : sig
-      val sub : 'a array -> pos:int -> len:int -> 'a t
-      val subo : ?pos:int -> ?len:int -> 'a array -> 'a t
-    end
+      (** Blit operations *)
 
-    module To_array : sig
-      val sub : 'a t -> pos:int -> len:int -> 'a array
-      val subo : ?pos:int -> ?len:int -> 'a t -> 'a array
+      val sub : 'a t -> pos:int -> len:int -> 'a t
+      val subo : ?pos:int -> ?len:int -> 'a t -> 'a t
 
-      val blito
-        :  src:'a t
-        -> ?src_pos:int
-        -> ?src_len:int
-        -> dst:'a array
-        -> ?dst_pos:int
-        -> unit
-        -> unit
+      module Of_array : sig
+        val sub : 'a array -> pos:int -> len:int -> 'a t
+        val subo : ?pos:int -> ?len:int -> 'a array -> 'a t
+      end
 
-      val blit : src:'a t -> src_pos:int -> dst:'a array -> dst_pos:int -> len:int -> unit
+      module To_array : sig
+        val sub : 'a t -> pos:int -> len:int -> 'a array
+        val subo : ?pos:int -> ?len:int -> 'a t -> 'a array
 
-      val unsafe_blit
-        :  src:'a t
-        -> src_pos:int
-        -> dst:'a array
-        -> dst_pos:int
-        -> len:int
-        -> unit
+        val blito
+          :  src:'a t
+          -> ?src_pos:int
+          -> ?src_len:int
+          -> dst:'a array
+          -> ?dst_pos:int
+          -> unit
+          -> unit
+
+        val blit
+          :  src:'a t
+          -> src_pos:int
+          -> dst:'a array
+          -> dst_pos:int
+          -> len:int
+          -> unit
+
+        val unsafe_blit
+          :  src:'a t
+          -> src_pos:int
+          -> dst:'a array
+          -> dst_pos:int
+          -> len:int
+          -> unit
+      end
     end
 
     (** Operations for local iarrays. *)
     module Local : sig
       (*_ Lifted from [Container_with_local]. All instantiate [Container] functions *)
 
-      val length : _ t -> int
-      val is_empty : _ t -> bool
+      [@@@implicit_kind: 'a]
+      [@@@implicit_kind: 'b]
+      [@@@implicit_kind: 'c]
+
+      val length : 'a t -> int
+      val is_empty : 'a t -> bool
       val mem : 'a t -> 'a -> equal:('a -> 'a -> bool) -> bool
       val iter : 'a t -> f:('a -> unit) -> unit
 
@@ -317,7 +351,8 @@ module Definitions = struct
       val cartesian_product : 'a t -> 'b t -> ('a * 'b) t
 
       [%%template:
-      [@@@kind.default ka = value, kacc = base_or_null]
+      [@@@kind.default ka = value_or_null, kacc = base_or_null]
+      [@@@kind ka' = ka mod separable]
 
       val fold : 'a 'acc. 'a t -> init:'acc -> f:('acc -> 'a -> 'acc) -> 'acc
       val foldi : 'a 'acc. 'a t -> init:'acc -> f:(int -> 'acc -> 'a -> 'acc) -> 'acc
@@ -341,6 +376,18 @@ module Definitions = struct
       val iteri : 'a t -> f:(int -> 'a -> unit) -> unit
       val unzip : ('a * 'b) t -> 'a t * 'b t
       val zip_exn : 'a t -> 'b t -> ('a * 'b) t
+
+      (** Convert a unique array into a unique iarray without copying. This is safe
+          because uniqueness of the input guarantees no other reference exists that could
+          mutate the underlying array after the conversion.
+
+          Elements are wrapped in [global] because the elements of the original array are
+          conceptually mutable fields, which means they have an implicit [global aliased]
+          modality on them, and [global] implies [aliased]. *)
+      external of_array
+        :  ('a array[@local_opt])
+        -> ('a global t[@local_opt])
+        = "%identity"
     end
 
     (** Unsafe conversions

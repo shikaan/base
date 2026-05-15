@@ -1,17 +1,18 @@
 open! Import
 
 [%%template
-[@@@kind kr1 = (value & value)]
-[@@@kind kr2 = (value & value & value)]
-[@@@kind kr3 = (value & value & value & value)]
+[@@@kind kr1 = (value_or_null & value_or_null)]
+[@@@kind kr2 = (value_or_null & kr1)]
 
 [@@@kind_set.define
-  all_non_val = (base_non_value, value_or_null & (base_or_null, kr1, kr2, kr3))]
+  all_ks_non_value = (base_non_value, value_or_null & (base_or_null, kr2))]
+
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
 
 type nonrec 'a t =
   | None
   | Some of 'a
-[@@kind k = all_non_val] [@@deriving compare ~localize]
+[@@kind k = all_ks_non_value] [@@deriving compare ~localize]
 
 type 'a t = 'a option =
   | None
@@ -23,7 +24,7 @@ type 'a t = 'a option =
   | Some of 'a
 [@@kind.explicit value_or_null]
 
-[@@@kind.default k = (value_or_null, all_non_val)]
+[@@@kind.default k = all_ks]
 
 let is_none : (_ t[@kind k]) -> bool = function
   | None -> true

@@ -22,7 +22,7 @@ val copy : t -> t
 
 val singleton : Stdlib.Obj.t -> t
 val empty : t
-val get_empty : unit -> t
+val get_empty : unit -> t [@@zero_alloc]
 val length : t -> int
 
 (** [get t i] and [unsafe_get t i] return the object at index [i]. [set t i o] and

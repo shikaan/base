@@ -586,7 +586,7 @@ module type Modes = sig
       include Definitions.Global
     end
 
-    type 'a t = { global : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.global = { global : 'a } [@@unboxed]
 
     include Global with type 'a t := 'a t (** @inline *)
   end
@@ -596,13 +596,14 @@ module type Modes = sig
       include Definitions.Portable
     end
 
-    type 'a t = { portable : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.portable = { portable : 'a } [@@unboxed]
 
     include Portable with type 'a t := 'a t
   end
 
   module Contended : sig
-    type 'a t = { contended : 'a } [@@unboxed] [@@deriving of_sexp]
+    type 'a t = 'a Basement.Modes.contended = { contended : 'a }
+    [@@unboxed] [@@deriving of_sexp]
 
     (** Require a value has a type that mode-crosses contention. This is useful for
         assisting type inference as well as improving error messages. *)
@@ -610,55 +611,62 @@ module type Modes = sig
   end
 
   module Shared : sig
-    type 'a t = { shared : 'a } [@@unboxed] [@@deriving of_sexp]
+    type 'a t = 'a Basement.Modes.shared = { shared : 'a }
+    [@@unboxed] [@@deriving of_sexp]
   end
 
   module Portended : sig
-    type 'a t = { portended : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.portended = { portended : 'a } [@@unboxed]
   end
 
   module Many : sig
-    type 'a t = { many : 'a }
+    type 'a t = 'a Basement.Modes.many = { many : 'a }
     [@@unboxed]
     [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
   end
 
   module Aliased : sig
-    type 'a t = { aliased : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.aliased = { aliased : 'a } [@@unboxed]
+
+    (** Construct a [t] *)
+    val wrap : 'a -> 'a t
+
+    (** Access the contents of a [t] *)
+    val unwrap : 'a t -> 'a
   end
 
   module Aliased_many : sig
-    type 'a t = { aliased_many : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.aliased_many = { aliased_many : 'a } [@@unboxed]
   end
 
   module Forkable : sig
-    type 'a t = { forkable : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.forkable = { forkable : 'a } [@@unboxed]
   end
 
   module Unyielding : sig
-    type 'a t = { unyielding : 'a }
+    type 'a t = 'a Basement.Modes.unyielding = { unyielding : 'a }
     [@@unboxed]
     [@@deriving compare ~localize, equal ~localize, hash, sexp ~stackify, sexp_grammar]
   end
 
   module Stateless : sig
-    type 'a t = { stateless : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.stateless = { stateless : 'a } [@@unboxed]
   end
 
-  module Observing : sig
-    type 'a t = { observing : 'a } [@@unboxed]
+  module Reading : sig
+    type 'a t = 'a Basement.Modes.reading = { reading : 'a } [@@unboxed]
   end
 
   module Immutable : sig
-    type 'a t = { immutable : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.immutable = { immutable : 'a } [@@unboxed]
   end
 
   module Read : sig
-    type 'a t = { read : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.read = { read : 'a } [@@unboxed]
   end
 
   module Immutable_data : sig
-    type 'a t = { immutable_data : 'a } [@@unboxed]
+    type 'a t = 'a Basement.Modes.immutable_data = { immutable_data : 'a } [@@unboxed]
   end
 
   (** Abstract over whether a value is [local] or [global]. *)
@@ -894,7 +902,7 @@ module type Modes = sig
     [@@deriving compare ~localize, equal ~localize, hash, sexp ~stackify, sexp_grammar]
 
     type 'a stateless = 'a Stateless.t = { stateless : 'a } [@@unboxed]
-    type 'a observing = 'a Observing.t = { observing : 'a } [@@unboxed]
+    type 'a reading = 'a Reading.t = { reading : 'a } [@@unboxed]
     type 'a immutable = 'a Immutable.t = { immutable : 'a } [@@unboxed]
     type 'a read = 'a Read.t = { read : 'a } [@@unboxed]
     type 'a immutable_data = 'a Immutable_data.t = { immutable_data : 'a } [@@unboxed]
