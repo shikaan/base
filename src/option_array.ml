@@ -134,7 +134,7 @@ type ('a : value_or_null) t = 'a Cheap_option.t Uniform_array.t
 [%%rederive type 'a t = 'a Cheap_option.t Uniform_array.t [@@deriving sexp, sexp_grammar]]
 
 let empty = Uniform_array.empty
-let get_empty = Uniform_array.get_empty
+let get_empty = [%eta1 Uniform_array.get_empty]
 let create ~len = Uniform_array.create ~len (Cheap_option.get_none ())
 let init n ~f = Uniform_array.init n ~f:(fun i -> Cheap_option.of_option (f i)) [@nontail]
 let init_some n ~f = Uniform_array.init n ~f:(fun i -> Cheap_option.some (f i)) [@nontail]

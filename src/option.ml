@@ -5,16 +5,20 @@ include Constructors
 [@@@warning "-incompatible-with-upstream"]
 
 [%%template
-[@@@kind kr1 = (value & value)]
-[@@@kind kr2 = (value & value & value)]
-[@@@kind kr3 = (value & value & value & value)]
+[@@@kind kr1 = (value_or_null & value_or_null)]
+[@@@kind kr2 = (value_or_null & kr1)]
+
+[@@@kind_set.define
+  all_ks_non_value = (base_non_value, value_or_null & (base_or_null, kr2))]
+
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
 
 [%%rederive.portable
   type ('a : value_or_null) t = 'a option
   [@@deriving compare ~localize, globalize, hash, sexp_grammar]]
 
 include struct
-  [@@@kind.default k = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
+  [@@@kind.default k = all_ks]
 
   open struct
     type nonrec ('a : any) t = ('a t[@kind.explicit k]) =
@@ -54,7 +58,7 @@ end
 
 include struct
   [%%template
-  [@@@kind.default k = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
+  [@@@kind.default k = all_ks]
 
   open struct
     type nonrec ('a : any) t = ('a t[@kind.explicit k]) =
@@ -104,7 +108,7 @@ include struct
     match t with
     | Some x -> f x [@exclave_if_local m]
     | None -> default
-  [@@kind ki = k, ko = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
+  [@@kind ki = k, ko = all_ks]
   ;;]
 end
 
@@ -185,7 +189,7 @@ let equal f (t : (_ t[@kind k])) (t' : (_ t[@kind k])) =
   | None, None -> true
   | Some x, Some x' -> f x x'
   | _ -> false
-[@@kind k = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
+[@@kind k = all_ks]
 ;;
 
 let some x = Some x [@exclave_if_local m]
@@ -244,10 +248,6 @@ let%template[@mode local] both x y =
 
 [%%template
 [@@@mode.default m = (global, local)]
-
-[@@@kind_set.define
-  all_ks = (base_or_null, value_or_null & (base_or_null, kr1, kr2, kr3))]
-
 [@@@kind ko = all_ks]
 
 let[@kind ko] return a : (_ t[@kind ko]) = Some a [@exclave_if_local m]

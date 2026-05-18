@@ -14,8 +14,8 @@ module Definitions = struct
 
     val compare : ([%compare: t][@mode.explicit m]) [@@mode m = (global, m)]
 
-    (** Values returned by [hash] must be non-negative. An exception will be raised in the
-        case that [hash] returns a negative value. *)
+    (** This used to be documented to guarantee that hash functions don't return negative
+        numbers, but as of 2026-04-16 this guarantee was seldom true. *)
     val hash : t -> int
   end
 end

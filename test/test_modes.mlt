@@ -33,15 +33,13 @@ type _doesn't_cross_locality =
 [%%expect
   {|
 Line _, characters _-_:
-Error: This type
-         (Base.int, Base.Modes.At_locality.local) Base.Modes.At_locality.t =
-           (Base.int, Base.Modes.At_locality.local) Base__Modes.At_locality.t
+Error: This type (int, Modes.At_locality.local) Modes.At_locality.t
        should be an instance of type ('a : value mod global)
-       The kind of (Base.int, Base.Modes.At_locality.local)
-                   Base.Modes.At_locality.t is
+       The kind of (int, Modes.At_locality.local) Modes.At_locality.t is
            immutable_data
+             separable
              mod aliased
-             with Base.Modes.At_locality.actually_local
+             with Modes.At_locality.actually_local
                     @@
                     forkable
                     unyielding
@@ -49,9 +47,8 @@ Error: This type
                     portable
                     aliased
                     contended.
-       But the kind of (Base.int, Base.Modes.At_locality.local)
-                       Base.Modes.At_locality.t must be a subkind of
-           value mod global
+       But the kind of (int, Modes.At_locality.local) Modes.At_locality.t must be a subkind of
+         value mod global
          because of the definition of require_global at file "test_modes.mlt", line 7, characters 0-43.
 
        The first mode-crosses less than the second along:
@@ -98,28 +95,21 @@ type _doesn't_cross_portability =
   {|
 Line _, characters _-_:
 Error: This type
-         (Base.int, Base.Modes.At_portability.nonportable)
-         Base.Modes.At_portability.t =
-           (Base.int, Base.Modes.At_portability.nonportable)
-           Base__Modes.At_portability.t
+         (int, Modes.At_portability.nonportable) Modes.At_portability.t
        should be an instance of type ('a : value mod portable)
-       The kind of (Base.int, Base.Modes.At_portability.nonportable)
-                   Base.Modes.At_portability.t is
+       The kind of (int, Modes.At_portability.nonportable)
+                   Modes.At_portability.t is
            immutable_data
+             separable
              mod global unforkable yielding
-             with Base.Modes.At_portability.nonportable_
-                    @@
-                    global
-                    many
-                    contended.
-       But the kind of (Base.int, Base.Modes.At_portability.nonportable)
-                       Base.Modes.At_portability.t must be a subkind of
+             with Modes.At_portability.nonportable_ @@ global many contended.
+       But the kind of (int, Modes.At_portability.nonportable)
+                       Modes.At_portability.t must be a subkind of
            value mod portable
          because of the definition of require_portable at file "test_modes.mlt", line 6, characters 0-47.
 
        The first mode-crosses less than the second along:
-         portability:
-           mod portable with Base.Modes.At_portability.nonportable_ ≰
+         portability: mod portable with Modes.At_portability.nonportable_ ≰
            mod portable
 |}]
 
@@ -142,26 +132,21 @@ type _doesn't_cross_portability =
   {|
 Line _, characters _-_:
 Error: This type
-         (Base.int -> Base.int, Base.Modes.At_portability.nonportable)
-         Base.Modes.At_portability.t =
-           (Base.int -> Base.int, Base.Modes.At_portability.nonportable)
-           Base__Modes.At_portability.t
+         (int -> int, Modes.At_portability.nonportable)
+         Modes.At_portability.t
        should be an instance of type ('a : value mod portable)
-       The kind of (Base.int -> Base.int,
-                    Base.Modes.At_portability.nonportable)
-                   Base.Modes.At_portability.t is
+       The kind of (int -> int, Modes.At_portability.nonportable)
+                   Modes.At_portability.t is
            value
-             mod portable aliased immutable non_float
-             with Base.Modes.At_portability.nonportable_ @@ aliased contended.
-       But the kind of (Base.int -> Base.int,
-                        Base.Modes.At_portability.nonportable)
-                       Base.Modes.At_portability.t must be a subkind of
+             mod portable aliased immutable
+             with Modes.At_portability.nonportable_ @@ aliased contended.
+       But the kind of (int -> int, Modes.At_portability.nonportable)
+                       Modes.At_portability.t must be a subkind of
            value mod portable
          because of the definition of require_portable at file "test_modes.mlt", line 6, characters 0-47.
 
        The first mode-crosses less than the second along:
-         portability:
-           mod portable with Base.Modes.At_portability.nonportable_ ≰
+         portability: mod portable with Modes.At_portability.nonportable_ ≰
            mod portable
 |}]
 
@@ -181,7 +166,9 @@ Error: This value is nonportable but is expected to be portable.
 
 (* We can implement Modes.Portable.t using Modes.At_portability.t *)
 
-type 'a complicated_portable : immutable_data with 'a @@ portable =
+type 'a
+     complicated_portable :
+     value mod forkable immutable many stateless unyielding with 'a @@ portable =
   { inner : ('a, Modes.At_portability.portable) Modes.At_portability.t }
 [@@unboxed]
 

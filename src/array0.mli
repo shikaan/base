@@ -5,19 +5,19 @@
 [%%template:
   external create
     : ('a : any mod separable).
-    len:int -> 'a -> 'a array @ m
+    len:int -> 'a -> 'a array @ m unique
     = "%makearray_dynamic"
   [@@alloc __ @ m = (heap_global, stack_local)] [@@layout_poly]]
 
 external create_local
   : ('a : any mod separable).
-  len:int -> 'a -> local_ 'a array
+  len:int -> 'a -> 'a array @ local unique
   = "%makearray_dynamic"
 [@@layout_poly]
 
 external magic_create_uninitialized
   : ('a : any mod separable).
-  len:int -> ('a array[@local_opt])
+  len:int -> ('a array[@local_opt]) @ unique
   = "%makearray_dynamic_uninit"
 [@@layout_poly]
 
@@ -86,26 +86,35 @@ val concat : ('a : k). 'a array list @ local -> 'a array]
 val max_length : int
 val create_float_uninitialized : len:int -> float array
 
-val blit
-  :  src:'a array @ local
-  -> src_pos:int
-  -> dst:'a array @ local
-  -> dst_pos:int
-  -> len:int
-  -> unit
+include sig
+  [@@@implicit_kind: ('a : value_or_null mod separable)]
+  [@@@implicit_kind: ('b : value_or_null)]
 
-val make_matrix : dimx:int -> dimy:int -> 'a -> 'a array array
+  val blit
+    :  src:'a array @ local
+    -> src_pos:int
+    -> dst:'a array @ local
+    -> dst_pos:int
+    -> len:int
+    -> unit
 
-val%template fold_right : 'a array @ m -> f:('a @ m -> 'b -> 'b) @ local -> init:'b -> 'b
-[@@mode m = (uncontended, shared)]
+  val make_matrix : dimx:int -> dimy:int -> 'a -> 'a array array
 
-val stable_sort : 'a array -> compare:('a -> 'a -> int) -> unit
+  val%template fold_right
+    :  'a array @ m
+    -> f:('a @ m -> 'b -> 'b) @ local
+    -> init:'b
+    -> 'b
+  [@@mode m = (uncontended, shared)]
+
+  val stable_sort : 'a array -> compare:('a -> 'a -> int) -> unit
+end
 
 [%%template:
 [@@@kind.default k' = (base_or_null, value_or_null mod external64)]
 [@@@kind k = k' mod separable]
 
-val init : ('a : k). int -> f:(int -> 'a) @ local -> 'a array @ m
+val init : ('a : k). int -> f:(int -> 'a) @ local -> 'a array @ m unique
 [@@alloc __ @ m = (heap_global, stack_local)]
 
 val iter : ('a : k). 'a array -> f:('a -> unit) @ local -> unit

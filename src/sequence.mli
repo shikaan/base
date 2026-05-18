@@ -51,7 +51,7 @@ include%template
 (** [empty] is a sequence with no elements. *)
 val empty : ('a : any). 'a t
 
-val get_empty : ('a : value_or_null). unit -> 'a t @ portable
+val get_empty : ('a : value_or_null). unit -> 'a t @ portable [@@zero_alloc]
 
 (** [next] returns the next element of a sequence and the next tail if the sequence is not
     finished. *)

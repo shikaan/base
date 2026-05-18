@@ -25,12 +25,11 @@ open! Import
 module Constructors : module type of Option0
 
 [%%template:
-[@@@kind kr1 = (value & value)]
-[@@@kind kr2 = (value & value & value)]
-[@@@kind kr3 = (value & value & value & value)]
+[@@@kind kr1 = (value_or_null & value_or_null)]
+[@@@kind kr2 = (value_or_null & kr1)]
 
 [@@@kind_set.define
-  all_ks_non_value = (base_non_value, value_or_null & (base_or_null, kr1, kr2, kr3))]
+  all_ks_non_value = (base_non_value, value_or_null & (base_or_null, kr2))]
 
 [@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
 

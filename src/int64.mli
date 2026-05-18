@@ -73,7 +73,7 @@ external bits_of_float
   :  local_ float
   -> t
   = "caml_int64_bits_of_float" "caml_int64_bits_of_float_unboxed"
-[@@unboxed] [@@noalloc]
+[@@unboxed] [@@noalloc] [@@builtin]
 
 (** [float_of_bits] will always allocate its result on the heap unless the [_unboxed] C
     function call is chosen by the compiler. *)
@@ -81,7 +81,7 @@ external float_of_bits
   :  local_ t
   -> float
   = "caml_int64_float_of_bits" "caml_int64_float_of_bits_unboxed"
-[@@unboxed] [@@noalloc]
+[@@unboxed] [@@noalloc] [@@builtin]
 
 (** {2 Byte swap operations}
 

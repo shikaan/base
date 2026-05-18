@@ -13,16 +13,12 @@ end
 module type T1 = sig
   type ('a : ka) t
 end
-[@@kind.explicit ka = all]
-
-module type T1 = T1 [@kind.explicit value]
+[@@kind.explicit_plus_unmangled ka = all]
 
 module type T2 = sig
   type ('a : ka, 'b : kb) t
 end
-[@@kind.explicit ka = all, kb = all]
-
-module type T2 = T2 [@kind.explicit value value]
+[@@kind.explicit_plus_unmangled ka = all, kb = all]
 
 [@@@kind.default ka = smaller_all, kb = smaller_all, kc = smaller_all]
 

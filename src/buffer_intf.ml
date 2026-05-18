@@ -3,7 +3,7 @@ open! Import
 module Definitions = struct
   module type S = sig
     (** The abstract type of buffers. *)
-    type t [@@deriving sexp_of]
+    type t : mutable_data [@@deriving sexp_of]
 
     (** [create n] returns a fresh buffer, initially empty. The [n] parameter is the
         initial size of the internal storage medium that holds the buffer contents. That

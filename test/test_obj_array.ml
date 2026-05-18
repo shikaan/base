@@ -31,7 +31,7 @@ end = struct
 
   let empty = Obj_array.empty
   let%expect_test _ = test Obj_array.empty ~allow_empty:true
-  let get_empty = Obj_array.get_empty
+  let get_empty = [%eta1 Obj_array.get_empty]
   let%expect_test _ = test (Obj_array.get_empty ()) ~allow_empty:true
   let singleton = Obj_array.singleton
   let%expect_test _ = test (Obj_array.singleton (obj 0.))

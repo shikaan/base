@@ -15,14 +15,19 @@ module Sexp := Sexp0
 [@@@warning "-incompatible-with-upstream"]
 
 [%%template:
-  type ('a : k) t = (('a, Error.t) Result.t[@kind k])
-  [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify]
-  [@@kind k = base_non_value]]
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null)]
+
+[%%template:
+type ('a : k) t = (('a, Error.t) Result.t[@kind k])
+[@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify]
+[@@kind k = all_ks_non_value]
 
 (** Serialization and comparison of an [Error] force the error's lazy message. *)
 type ('a : value_or_null) t = ('a, Error.t) Result.t
 [@@deriving
   compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+[@@kind k = value_or_null]]
 
 (** [Applicative] functions don't have quite the same semantics as
     [Applicative.Of_Monad(Or_error)] would give -- [apply (Error e1) (Error e2)] returns
@@ -48,22 +53,29 @@ val is_error : ('a : value_or_null). 'a t -> bool
     return an [Error] directly, without ending up with a nested error; it is equivalent to
     [Result.join (try_with f)]. *)
 val%template try_with
-  : ('a : value_or_null).
-  ?backtrace:bool (** defaults to [false] *) -> local_ (unit -> 'a @ p) -> 'a t @ p
-[@@mode p = (nonportable, portable)]
+  : ('a : k).
+  ?backtrace:bool (** defaults to [false] *)
+  -> (unit -> 'a @ p) @ local once
+  -> ('a t[@kind k]) @ p
+[@@mode p = (nonportable, portable)] [@@kind k = base_or_null]
 
 val try_with_join
   : ('a : value_or_null).
-  ?backtrace:bool (** defaults to [false] *) -> local_ (unit -> 'a t) -> 'a t
+  ?backtrace:bool (** defaults to [false] *) -> (unit -> 'a t) @ local once -> 'a t
 
 (** [ok t] returns [None] if [t] is an [Error], and otherwise returns the contents of the
     [Ok] constructor. *)
 val ok : ('ok : value_or_null). 'ok t -> 'ok option
 
+(** [ok_or_null t] returns [Null] if [t] is an [Error], and otherwise returns the contents
+    of the [Ok] constructor wrapped in [This]. *)
+val ok_or_null : 'ok t -> 'ok or_null
+[@@zero_alloc]
+
 (** [ok_exn t] throws an exception if [t] is an [Error], and otherwise returns the
     contents of the [Ok] constructor. *)
 val%template ok_exn : ('a : k). ('a t[@kind k]) -> 'a
-[@@kind k = base_or_null]
+[@@kind k = all_ks]
 
 (** [of_exn ?backtrace exn] is [Error (Error.of_exn ?backtrace exn)]. *)
 val of_exn : ('a : value_or_null). ?backtrace:[ `Get | `This of string ] -> exn -> 'a t
@@ -88,6 +100,19 @@ val of_option_lazy_sexp : ('a : value_or_null). 'a option -> error:Sexp.t Lazy.t
 (** Calls [of_option ~error:(Error.of_lazy error)]. *)
 val of_option_lazy_string : ('a : value_or_null). 'a option -> error:string Lazy.t -> 'a t
 
+(** [of_or_null t ~error] returns [Ok 'a] if [t] is [This 'a], and otherwise returns the
+    supplied [error] as [Error error]. *)
+val of_or_null : 'a or_null -> error:Error.t -> 'a t
+
+(** Calls [of_or_null ~error:(Error.of_lazy_t error)]. *)
+val of_or_null_lazy : 'a or_null -> error:Error.t Lazy.t -> 'a t
+
+(** Calls [of_or_null ~error:(Error.of_lazy_sexp error)]. *)
+val of_or_null_lazy_sexp : 'a or_null -> error:Sexp.t Lazy.t -> 'a t
+
+(** Calls [of_or_null ~error:(Error.of_lazy error)]. *)
+val of_or_null_lazy_string : 'a or_null -> error:string Lazy.t -> 'a t
+
 (** [error] is a wrapper around [Error.create]:
 
     {[
@@ -109,7 +134,7 @@ val%template error
 [@@mode (p, c) = ((nonportable, uncontended), (portable, contended))]
 
 [%%template:
-[@@@kind.default k = base_or_null]
+[@@@kind.default k = all_ks]
 
 val error_s : ('a : k). Sexp.t -> ('a t[@kind k]) @ portable
 
@@ -132,8 +157,8 @@ val%template tag : ('a : value_or_null). 'a t @ p -> tag:string -> 'a t @ p
 [@@mode p = (portable, nonportable)]
 
 (** [tag_s] is like [tag] with a sexp tag. *)
-val%template tag_s : ('a : value_or_null). 'a t @ p -> tag:Sexp.t -> 'a t @ p
-[@@mode p = (portable, nonportable)]
+val%template tag_s : ('a : k). ('a t[@kind k]) @ p -> tag:Sexp.t -> ('a t[@kind k]) @ p
+[@@mode p = (portable, nonportable)] [@@kind k = base_or_null]
 
 (** [tag_lazy] is like [tag] with a lazy tag. *)
 val tag_lazy : ('a : value_or_null). 'a t -> tag:string Lazy.t -> 'a t
@@ -154,12 +179,12 @@ val unimplemented : ('a : value_or_null). string -> 'a t @ portable
 
 [%%template:
 [@@@mode.default m = (global, local)]
-[@@@kind ko = base_or_null]
+[@@@kind ko = all_ks]
 
 val return : ('a : ko). 'a @ m -> ('a t[@kind ko]) @ m
 [@@kind ko] [@@zero_alloc_if_local m]
 
-[@@@kind.default ki = base_or_null, ko = ko]
+[@@@kind.default ki = all_ks, ko = ko]
 
 val bind
   : ('a : ki) ('b : ko).
@@ -171,8 +196,8 @@ val map
   : ('a : ki) ('b : ko).
   ('a t[@kind ki]) @ m -> f:('a @ m -> 'b @ m) @ local -> ('b t[@kind ko]) @ m]
 
-val iter : ('a : value_or_null). 'a t -> f:local_ ('a -> unit) -> unit
-val iter_error : ('a : value_or_null). 'a t -> f:local_ (Error.t -> unit) -> unit
+val iter : ('a : value_or_null). 'a t -> f:('a -> unit) @ local once -> unit
+val iter_error : ('a : value_or_null). 'a t -> f:(Error.t -> unit) @ local once -> unit
 
 (** [combine_errors ts] returns [Ok] if every element in [ts] is [Ok], else it returns
     [Error] with all the errors in [ts]. More precisely:
@@ -204,4 +229,4 @@ val find_ok : ('a : value_or_null). 'a t list -> 'a t
     bespoke error when passed an empty list. *)
 val find_map_ok
   : ('a : value_or_null) ('b : value_or_null).
-  'a list -> f:local_ ('a -> 'b t) -> 'b t
+  'a list -> f:('a -> 'b t) @ local -> 'b t]

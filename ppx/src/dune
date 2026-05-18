@@ -1,6 +1,6 @@
 (library
  (name ppx_base_internal)
- (kind ppx_deriver)
+ (kind ppx_rewriter)
  (libraries ppxlib ppxlib_jane ppxlib.stdppx)
  (preprocess
   (pps ppxlib.metaquot)))

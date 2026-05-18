@@ -99,9 +99,10 @@ module type String = sig @@ portable
   val sub : t @ m -> pos:int -> len:int -> t @ m
 
   (** [sub] with no bounds checking, and always returns a new copy *)
-  val unsafe_sub : t @ local -> pos:int -> len:int -> t @ m
+  val unsafe_sub : t @ local -> pos:int -> len:int -> t @ m unique
 
-  val subo : ?pos:int -> ?len:int -> t @ m -> t @ m]
+  val subo : ?pos:int -> ?len:int -> t @ m -> t @ m
+  val copy : t @ local -> t @ m unique]
 
   include%template
     Indexed_container.S0_with_creators
@@ -182,8 +183,7 @@ module type String = sig @@ portable
     type nonrec t = t [@@deriving hash, sexp ~stackify, sexp_grammar]
 
     include%template Comparable.S [@modality portable] with type t := t
-
-    include Ppx_compare_lib.Comparable.S__local with type t := t
+    include%template Ppx_compare_lib.Comparable.S [@mode local] with type t := t
 
     val is_suffix : local_ t -> suffix:local_ t -> bool
     val is_prefix : local_ t -> prefix:local_ t -> bool
@@ -216,14 +216,14 @@ module type String = sig @@ portable
       The [_exn] versions return the actual index (instead of an option) when [char] is
       found, and raise [Stdlib.Not_found] or [Not_found_s] otherwise. *)
 
-  val index : t -> char -> int option
-  val index_exn : t -> char -> int
-  val index_from : t -> int -> char -> int option
-  val index_from_exn : t -> int -> char -> int
-  val rindex : t -> char -> int option
-  val rindex_exn : t -> char -> int
-  val rindex_from : t -> int -> char -> int option
-  val rindex_from_exn : t -> int -> char -> int
+  val index : t @ local -> char -> int option
+  val index_exn : t @ local -> char -> int
+  val index_from : t @ local -> int -> char -> int option
+  val index_from_exn : t @ local -> int -> char -> int
+  val rindex : t @ local -> char -> int option
+  val rindex_exn : t @ local -> char -> int
+  val rindex_from : t @ local -> int -> char -> int option
+  val rindex_from_exn : t @ local -> int -> char -> int
 
   (** Produce a sequence of the characters in a string. *)
   val to_sequence : t -> char Sequence.t
@@ -478,15 +478,15 @@ module type String = sig @@ portable
   val suffix : t @ m -> int -> t @ m
 
   (** [prefix s n] returns the longest prefix of [s] of length less than or equal to [n]. *)
-  val prefix : t @ m -> int -> t @ m]
+  val prefix : t @ m -> int -> t @ m
 
   (** [drop_suffix s n] drops the longest suffix of [s] of length less than or equal to
       [n]. *)
-  val drop_suffix : t -> int -> t
+  val drop_suffix : t @ m -> int -> t @ m
 
   (** [drop_prefix s n] drops the longest prefix of [s] of length less than or equal to
       [n]. *)
-  val drop_prefix : t -> int -> t
+  val drop_prefix : t @ m -> int -> t @ m]
 
   (** Produces the longest common suffix, or [""] if the list is empty. *)
   val common_suffix : t list -> t
@@ -653,40 +653,40 @@ module type String = sig @@ portable
 
         [is_char_escaping s ~escape_char pos] returns true if the char at [pos] is
         escaping, false otherwise. *)
-    val is_char_escaping : string -> escape_char:char -> int -> bool
+    val is_char_escaping : string @ local -> escape_char:char -> int -> bool
 
     (** [is_char_escaped s ~escape_char pos] returns true if the char at [pos] is escaped,
         false otherwise. *)
-    val is_char_escaped : string -> escape_char:char -> int -> bool
+    val is_char_escaped : string @ local -> escape_char:char -> int -> bool
 
     (** [is_char_literal s ~escape_char pos] returns true if the char at [pos] is not
         escaped or escaping. *)
-    val is_char_literal : string -> escape_char:char -> int -> bool
+    val is_char_literal : string @ local -> escape_char:char -> int -> bool
 
     (** [index s ~escape_char char] finds the first literal (not escaped) instance of
         [char] in s starting from 0. *)
-    val index : string -> escape_char:char -> char -> int option
+    val index : string @ local -> escape_char:char -> char -> int option
 
-    val index_exn : string -> escape_char:char -> char -> int
+    val index_exn : string @ local -> escape_char:char -> char -> int
 
     (** [rindex s ~escape_char char] finds the first literal (not escaped) instance of
         [char] in [s] starting from the end of [s] and proceeding towards 0. *)
-    val rindex : string -> escape_char:char -> char -> int option
+    val rindex : string @ local -> escape_char:char -> char -> int option
 
-    val rindex_exn : string -> escape_char:char -> char -> int
+    val rindex_exn : string @ local -> escape_char:char -> char -> int
 
     (** [index_from s ~escape_char pos char] finds the first literal (not escaped)
         instance of [char] in [s] starting from [pos] and proceeding towards the end of
         [s]. *)
-    val index_from : string -> escape_char:char -> int -> char -> int option
+    val index_from : string @ local -> escape_char:char -> int -> char -> int option
 
-    val index_from_exn : string -> escape_char:char -> int -> char -> int
+    val index_from_exn : string @ local -> escape_char:char -> int -> char -> int
 
     (** [rindex_from s ~escape_char pos char] finds the first literal (not escaped)
         instance of [char] in [s] starting from [pos] and towards 0. *)
-    val rindex_from : string -> escape_char:char -> int -> char -> int option
+    val rindex_from : string @ local -> escape_char:char -> int -> char -> int option
 
-    val rindex_from_exn : string -> escape_char:char -> int -> char -> int
+    val rindex_from_exn : string @ local -> escape_char:char -> int -> char -> int
 
     (** [split s ~escape_char ~on] returns a list of substrings of [s] that are separated
         by literal versions of [on]. Consecutive [on] characters will cause multiple empty

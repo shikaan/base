@@ -6,7 +6,7 @@ module Definitions = struct
     type t := bytes
 
     (** Writes a Unicode character to a given position using this encoding. *)
-    val set : local_ t -> int -> Uchar0.t -> int
+    val set : t @ local -> int -> Uchar0.t -> int
   end
 end
 
@@ -28,11 +28,9 @@ module type Bytes = sig @@ portable
 
   (** {1 Common Interfaces} *)
 
-  include Blit.S with type t := t
-
+  include%template Blit.S [@mode unique read] [@alloc stack] with type t := t
   include%template Comparable.S [@mode local] with type t := t
-
-  include Stringable.S with type t := t
+  include%template Stringable.S [@mode local] [@alloc stack] with type t := t
 
   (** Note that [pp] allocates in order to preserve the state of the byte sequence it was
       initially called with. *)
@@ -40,48 +38,56 @@ module type Bytes = sig @@ portable
 
   include Invariant.S with type t := t
 
-  module To_string : sig
-    val sub : (t, string) Blit.sub
-    val subo : (t, string) Blit.subo
+  module%template To_string : sig
+    [@@@alloc.default a = (heap, stack)]
+
+    val sub : ((t, string) Blit.sub[@mode unique read] [@alloc a])
+    val subo : ((t, string) Blit.subo[@mode unique read] [@alloc a])
   end
 
-  module From_string : Blit.S_distinct with type src := string and type dst := t
+  module%template From_string :
+    Blit.S_distinct
+    [@mode unique] [@alloc stack]
+    with type src := string
+     and type dst := t
+
+  (** [create_local] is like [create], but returns a stack-allocated [Bytes.t]. *)
+  val create_local : int -> t @ local unique
+  [@@zero_alloc]
+
+  [%%template:
+  [@@@alloc.default a @ l = (heap @ global, stack @ local)]
 
   (** [create len] returns a newly-allocated and uninitialized byte sequence of length
       [len]. No guarantees are made about the contents of the return value. *)
-  val%template create : int -> t @ m
-  [@@alloc __ @ m = (heap_global, stack_local)]
-
-  (** [create_local] is like [create], but returns a stack-allocated [Bytes.t]. *)
-  val create_local : int -> local_ t
-  [@@zero_alloc]
+  val create : int -> t @ l unique
+  [@@zero_alloc_if_stack a]
 
   (** [make len c] returns a newly-allocated byte sequence of length [len] filled with the
       byte [c]. *)
-  val%template make : int -> char -> t @ m
-  [@@alloc a @ m = (heap_global, stack_local)]
+  val make : int -> char -> t @ l unique
+  [@@zero_alloc_if_stack a]
 
   (** [map f t] applies function [f] to every byte, in order, and builds the byte sequence
       with the results returned by [f]. *)
-  val map : local_ t -> f:local_ (char -> char) -> t
-
-  val%template map : local_ t -> f:local_ (char -> char) -> local_ t [@@alloc stack]
+  val map : t @ local read -> f:(char -> char) @ local -> t @ l unique
 
   (** Like [map], but passes each character's index to [f] along with the char. *)
-  val mapi : local_ t -> f:local_ (int -> char -> char) -> t
+  val mapi : t @ local read -> f:(int -> char -> char) @ local -> t @ l unique
 
   (** [copy t] returns a newly-allocated byte sequence that contains the same bytes as
       [t]. *)
-  val%template copy : local_ t -> t @ m
-  [@@alloc a @ m = (heap_global, stack_local)]
+  val copy : t @ local read -> t @ l unique
+  [@@zero_alloc_if_stack a]
 
   (** [init len ~f] returns a newly-allocated byte sequence of length [len] with index [i]
       in the sequence being initialized with the result of [f i]. *)
-  val init : int -> f:local_ (int -> char) -> t
+  val init : int -> f:(int -> char) @ local -> t @ l unique
 
   (** [of_char_list l] returns a newly-allocated byte sequence where each byte in the
       sequence corresponds to the byte in [l] at the same index. *)
-  val of_char_list : local_ char list -> t
+  val of_char_list : char list @ local -> t @ l unique
+  [@@zero_alloc_if_stack a]]
 
   (** [length t] returns the number of bytes in [t]. *)
   external length : (t[@local_opt]) @ immutable -> int = "%bytes_length"
@@ -151,11 +157,11 @@ module type Bytes = sig @@ portable
 
   (** [fill t ~pos ~len c] modifies [t] in place, replacing all the bytes from [pos] to
       [pos + len] with [c]. *)
-  val fill : local_ t -> pos:int -> len:int -> char -> unit
+  val fill : t @ local -> pos:int -> len:int -> char -> unit
 
   (** [tr ~target ~replacement t] modifies [t] in place, replacing every instance of
       [target] in [s] with [replacement]. *)
-  val tr : target:char -> replacement:char -> local_ t -> unit
+  val tr : target:char -> replacement:char -> t @ local -> unit
 
   (** [tr_multi ~target ~replacement] returns an in-place function that replaces every
       instance of a character in [target] with the corresponding character in
@@ -168,26 +174,34 @@ module type Bytes = sig @@ portable
       [replacement] character is used. Note that character ranges are {b not} supported,
       so [~target:"a-z"] means the literal characters ['a'], ['-'], and ['z']. *)
   val tr_multi
-    :  target:local_ string
-    -> replacement:local_ string
-    -> (local_ t -> unit) Staged.t
+    :  target:string @ local
+    -> replacement:string @ local
+    -> (t @ local -> unit) Staged.t
+
+  [%%template:
+  [@@@alloc.default a @ l = (heap @ global, stack @ local)]
 
   (** [to_list t] returns the bytes in [t] as a list of chars. *)
-  val to_list : local_ t -> char list
+  val to_list : t @ local read -> char list @ l unique
+  [@@zero_alloc_if_stack a]
 
   (** [to_array t] returns the bytes in [t] as an array of chars. *)
-  val to_array : local_ t -> char array
+  val to_array : t @ local read -> char array @ l unique]
 
   (** [fold a ~f ~init:b] is [f a1 (f a2 (...))] *)
-  val fold : local_ t -> init:'acc -> f:local_ ('acc -> char -> 'acc) -> 'acc
+  val fold : t @ local read -> init:'acc -> f:('acc -> char -> 'acc) @ local -> 'acc
 
   (** [foldi] works similarly to [fold], but also passes the index of each character to
       [f]. *)
-  val foldi : local_ t -> init:'acc -> f:local_ (int -> 'acc -> char -> 'acc) -> 'acc
+  val foldi
+    :  t @ local read
+    -> init:'acc
+    -> f:(int -> 'acc -> char -> 'acc) @ local
+    -> 'acc
 
   (** [contains ?pos ?len t c] returns [true] iff [c] appears in [t] between [pos] and
       [pos + len]. *)
-  val contains : ?pos:int -> ?len:int -> local_ t -> char -> bool
+  val contains : ?pos:int -> ?len:int -> t @ local read -> char -> bool
 
   (** Maximum length of a byte sequence, which is architecture-dependent. Attempting to
       create a [Bytes] larger than this will raise an exception. *)
@@ -267,6 +281,12 @@ module type Bytes = sig @@ portable
   external unsafe_to_string
     :  no_mutation_while_string_reachable:(t[@local_opt])
     -> (string[@local_opt])
+    = "%bytes_to_string"
+
+  (** Safely convert a uniquely-owned bytes to a uniquely-owned string. *)
+  external unique_to_string
+    :  (t[@local_opt]) @ unique
+    -> (string[@local_opt]) @ unique
     = "%bytes_to_string"
 
   (** Unsafely convert a shared string to a byte sequence that should not be mutated.

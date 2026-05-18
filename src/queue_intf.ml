@@ -8,6 +8,9 @@ module Definitions = struct
 
     include Indexed_container.S1 with type 'a t := 'a t
 
+    val of_iarray : 'a iarray -> 'a t
+    val to_iarray : 'a t -> 'a iarray
+
     (** [singleton a] returns a queue with one element. *)
     val singleton : 'a -> 'a t
 

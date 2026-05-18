@@ -1,7 +1,6 @@
 open Ppxlib
 open Stdppx
 
-let expand_cold = ref true
 let error ~loc fmt = Location.raise_errorf ~loc (Stdlib.( ^^ ) "ppx_base_lint:" fmt)
 
 type suspicious_id = Stdlib_submodule of string
@@ -40,23 +39,6 @@ let rec is_stdlib_dot_something : Longident.t -> bool = function
   | Ldot (Lident "Stdlib", _) -> true
   | Ldot (id, _) -> is_stdlib_dot_something id
   | _ -> false
-;;
-
-let print_payload ppf = function
-  | PStr x -> Pprintast.structure ppf x
-  | PSig x -> Pprintast.signature ppf x
-  | PTyp x -> Pprintast.core_type ppf x
-  | PPat (x, None) -> Pprintast.pattern ppf x
-  | PPat (x, Some w) ->
-    Stdlib.Format.fprintf ppf "%a@ when@ %a" Pprintast.pattern x Pprintast.expression w
-;;
-
-let remove_loc =
-  object
-    inherit Ast_traverse.map
-    method! location _ = Location.none
-    method! location_stack _ = []
-  end
 ;;
 
 let check current_module =
@@ -105,75 +87,6 @@ let check current_module =
              ~loc:mb.pmb_loc
              "you cannot alias [Stdlib] sub-modules, use them directly"
          | _ -> ())
-
-    method! attributes attrs =
-      super#attributes attrs;
-      if !expand_cold
-      then (
-        let is_cold attr = String.equal attr.attr_name.txt "cold" in
-        match List.find_opt attrs ~f:is_cold with
-        | None -> ()
-        | Some attr ->
-          let expansion =
-            Ppx_cold.expand_cold_attribute attr
-            |> List.map ~f:(fun a ->
-              { a with
-                attr_name =
-                  { a.attr_name with
-                    txt =
-                      (let string = a.attr_name.txt
-                       and prefix = "ocaml." in
-                       if String.is_prefix string ~prefix
-                       then String.drop_prefix string (String.length prefix)
-                       else string)
-                  }
-              })
-          in
-          let is_part_of_expansion attr =
-            List.exists expansion ~f:(fun a ->
-              String.equal a.attr_name.txt attr.attr_name.txt
-              || String.equal ("ocaml." ^ a.attr_name.txt) attr.attr_name.txt)
-          in
-          let new_attrs =
-            List.concat_map attrs ~f:(fun a ->
-              if is_cold a
-              then a :: expansion
-              else if is_part_of_expansion a
-              then []
-              else [ a ])
-          in
-          if not
-               (Poly.equal
-                  (remove_loc#attributes attrs)
-                  (remove_loc#attributes new_attrs))
-          then (
-            (* Remove attributes written by the user that correspond to attributes in the
-               expansion *)
-            List.iter attrs ~f:(fun a ->
-              if is_part_of_expansion a
-              then Driver.register_correction ~loc:a.attr_loc ~repl:"");
-            let attribute_level =
-              String.make
-                (attr.attr_name.loc.loc_start.pos_cnum
-                 - attr.attr_loc.loc_start.pos_cnum
-                 - 1)
-                '@'
-            in
-            let repl =
-              Stdlib.Format.asprintf
-                "@[<h>%a@]"
-                (Stdlib.Format.pp_print_list (fun ppf x ->
-                   Stdlib.Format.fprintf
-                     ppf
-                     "[%s%s@ %a]"
-                     attribute_level
-                     x.attr_name.txt
-                     print_payload
-                     x.attr_payload))
-                (attr :: expansion)
-            in
-            Driver.register_correction ~loc:attr.attr_loc ~repl);
-          Ppxlib.Attribute.mark_as_handled_manually attr)
   end
 ;;
 
@@ -183,10 +96,6 @@ let module_of_loc (loc : Location.t) =
 ;;
 
 let () =
-  Ppxlib.Driver.add_arg
-    "-do-not-correct-cold-attributes"
-    (Clear expand_cold)
-    ~doc:"do not automatically expand [@cold] attributes";
   Ppxlib.Driver.register_transformation
     "base_lint"
     ~impl:(function

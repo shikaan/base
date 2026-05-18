@@ -8,11 +8,15 @@ module Invariant := Invariant_intf.Definitions
 [@@@warning "-incompatible-with-upstream"]
 
 [%%template:
+[@@@kind_set.define all_ks_non_value = base_non_value]
+[@@@kind_set.define all_ks = (all_ks_non_value, value_or_null_with_imm)]
+
+[%%template:
 type ('ok : k, 'err : value_or_null) t =
   | Ok of 'ok
   | Error of 'err
 [@@deriving sexp ~stackify, compare ~localize, equal ~localize, globalize]
-[@@kind k = base_non_value]
+[@@kind k = all_ks_non_value]
 
 (** ['ok] is the return type, and ['err] is often an error message string.
 
@@ -54,40 +58,46 @@ val fail : 'err -> (_, 'err) t
 val failf : ('a, unit, string, (_, string) t) format4 -> 'a
 
 [%%template:
-[@@@kind.default k = base_or_null_with_imm]
+[@@@kind.default k = all_ks]
 
 val is_ok : ('ok : k) ('err : value_or_null). (('ok, 'err) t[@kind k]) -> bool
 val is_error : ('ok : k) ('err : value_or_null). (('ok, 'err) t[@kind k]) -> bool]
 
 val ok : ('ok : value_or_null) ('err : value_or_null). ('ok, 'err) t -> 'ok option
+val ok_or_null : 'ok ('err : value_or_null). ('ok, 'err) t -> 'ok or_null [@@zero_alloc]
 val ok_exn : ('ok : value_or_null). ('ok, exn) t -> 'ok
 val ok_or_failwith : ('ok : value_or_null). ('ok, string) t -> 'ok
 val error : ('ok : value_or_null) ('err : value_or_null). ('ok, 'err) t -> 'err option
+
+val error_or_null : ('ok : value_or_null) 'err. ('ok, 'err) t -> 'err or_null
+[@@zero_alloc]
 
 val of_option
   : ('ok : value_or_null) ('err : value_or_null).
   'ok option -> error:'err -> ('ok, 'err) t
 
+val of_or_null : 'ok ('err : value_or_null). 'ok or_null -> error:'err -> ('ok, 'err) t
+
 val of_option_or_thunk
   : ('ok : value_or_null) ('err : value_or_null).
-  'ok option -> error:(unit -> 'err) -> ('ok, 'err) t
+  'ok option -> error:(unit -> 'err) @ local once -> ('ok, 'err) t
 
 val iter
   : ('ok : value_or_null) ('err : value_or_null).
-  ('ok, 'err) t -> f:local_ ('ok -> unit) -> unit
+  ('ok, 'err) t -> f:('ok -> unit) @ local once -> unit
 
 val iter_error
   : ('ok : value_or_null) ('err : value_or_null).
-  ('ok, 'err) t -> f:local_ ('err -> unit) -> unit
+  ('ok, 'err) t -> f:('err -> unit) @ local once -> unit
 
 [%%template:
 [@@@mode.default m = (global, local)]
-[@@@kind ko = base_or_null_with_imm]
+[@@@kind ko = all_ks]
 
 val return : ('ok : ko) 'err. 'ok @ m -> (('ok, 'err) t[@kind ko]) @ m
 [@@zero_alloc_if_local m] [@@kind ko]
 
-[@@@kind.default ki = base_or_null_with_imm, ko = ko]
+[@@@kind.default ki = all_ks, ko = ko]
 
 val bind
   : ('a : ki) ('b : ko) 'err.
@@ -104,9 +114,9 @@ val map
 val%template map_error
   : ('ok : k) ('err : value_or_null) ('c : value_or_null).
   (('ok, 'err) t[@kind k]) @ m
-  -> f:('err @ m -> 'c @ m) @ local
+  -> f:('err @ m -> 'c @ m) @ local once
   -> (('ok, 'c) t[@kind k]) @ m
-[@@kind k = base_or_null_with_imm] [@@alloc __ @ m = (heap_global, stack_local)]
+[@@kind k = all_ks] [@@alloc __ @ m = (heap_global, stack_local)]
 
 (** Returns [Ok] if both are [Ok] and [Error] otherwise. *)
 val combine
@@ -114,8 +124,8 @@ val combine
     ('err : value_or_null).
   ('ok1, 'err) t
   -> ('ok2, 'err) t
-  -> ok:local_ ('ok1 -> 'ok2 -> 'ok3)
-  -> err:local_ ('err -> 'err -> 'err)
+  -> ok:('ok1 -> 'ok2 -> 'ok3) @ local once
+  -> err:('err -> 'err -> 'err) @ local once
   -> ('ok3, 'err) t
 
 [%%template:
@@ -160,7 +170,7 @@ val of_either
 (** [ok_if_true] returns [Ok ()] if [bool] is true, and [Error error] if it is false. *)
 val ok_if_true : ('err : value_or_null). bool -> error:'err -> (unit, 'err) t
 
-val try_with : ('a : value_or_null). local_ (unit -> 'a) -> ('a, exn) t
+val try_with : ('a : value_or_null). (unit -> 'a) @ local once -> ('a, exn) t
 
 module Export : sig
   type ('ok : value_or_null, 'err : value_or_null) _result = ('ok, 'err) t =
@@ -168,8 +178,8 @@ module Export : sig
     | Error of 'err
 
   [%%template:
-  [@@@kind.default k = base_or_null_with_imm]
+  [@@@kind.default k = all_ks]
 
   val is_ok : ('ok : k) ('err : value_or_null). (('ok, 'err) t[@kind k]) -> bool
   val is_error : ('ok : k) ('err : value_or_null). (('ok, 'err) t[@kind k]) -> bool]
-end
+end]

@@ -12,10 +12,10 @@ let non_overlapping_ints list =
   List.fold list ~init:[] ~f:(fun list n -> unique_int n list :: list) |> List.rev
 ;;
 
-let unique (type a) (module A : S with type t = a) a list =
+let unique (type a : value_or_null) (module A : S with type t = a) a list =
   A.set a (unique_int (A.get a) (List.map ~f:A.get list))
 ;;
 
-let non_overlapping (type a) (module A : S with type t = a) list =
+let non_overlapping (type a : value_or_null) (module A : S with type t = a) list =
   List.map2_exn ~f:A.set list (non_overlapping_ints (List.map ~f:A.get list))
 ;;

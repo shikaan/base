@@ -138,7 +138,7 @@ module Definitions = struct
   end
 
   module type
-    [@kind_set.explicit ks = (value, value_or_null, value mod external64)] Iterators_with_index = sig
+    [@kind_set.explicit_plus_unmangled ks = (value, value_or_null, value mod external64)] Iterators_with_index = sig
     (** Use a boxed product just for the [value] versions for backwards-compatibility *)
 
     include Iterators_with_index_without_findi [@kind_set.explicit ks] [@mode m]
@@ -153,9 +153,6 @@ module Definitions = struct
       -> (int * ('a elt[@kind k'])) option @ m
     [@@mode m = (global, m)]
   end
-
-  module type Iterators_with_index = Iterators_with_index [@kind_set.explicit ks]
-  [@@kind_set ks = value]
 
   module type [@kind_set.explicit ks = base_or_null_with_ext] Iterators_with_index = sig
     include Iterators_with_index_without_findi [@kind_set.explicit ks] [@mode m]
@@ -214,7 +211,8 @@ module Definitions = struct
       [@@@alloc.default a]
 
       module type
-        [@kind_set.explicit ks = (value, value mod external64, base_or_null_with_ext)] S0 = sig
+        [@kind_set.explicit_plus_unmangled
+          ks = (value, value mod external64, base_or_null_with_ext)] S0 = sig
         include Container.S0 [@kind_set.explicit ks] [@alloc a]
 
         include
@@ -228,15 +226,13 @@ module Definitions = struct
           type ('a : k, _, _) t := (t[@kind k'])
           type (_ : k) elt := (elt[@kind k'])]
       end
-
-      module type S0 = S0 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
     end
 
     [@@@kind_set ks = (value, value_or_null, value mod external64, base_or_null_with_ext)]
 
     include struct
       [@@@alloc.default a]
-      [@@@kind_set.default.explicit ks]
+      [@@@kind_set.default.explicit_plus_unmangled ks]
 
       module type S1 = sig
         include Container.S1 [@kind_set.explicit ks] [@alloc a]
@@ -252,9 +248,6 @@ module Definitions = struct
           type ('a : k, _, _) t := ('a t[@kind k'])
           type ('a : k) elt := 'a]
       end
-
-      module type%template S1 = S1 [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
 
       module type Creators_with_index = sig
         include Container.Generic_types [@kind_set.explicit ks]
@@ -358,10 +351,6 @@ module Definitions = struct
         [@@mode m = (global, m)] [@@alloc __ @ n = (heap_global, a @ m)]
       end
 
-      module type%template Creators_with_index = Creators_with_index
-      [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
-
       module type Generic_with_creators = sig
         include Generic [@kind_set.explicit ks] [@alloc a]
 
@@ -387,6 +376,7 @@ module Definitions = struct
           type ('a : k, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
           type ('a : k) elt := ('a elt[@kind k'])]
       end
+      [@@kind_set.explicit ks]
 
       module type%template Generic_with_creators = sig
         include Generic_with_creators [@kind_set.explicit ks] [@alloc a]
@@ -411,7 +401,7 @@ module Definitions = struct
         [Make0_with_creators] already takes [Elt.equal]. *)
 
     module type
-      [@kind_set.explicit ks = (value, base_or_null_with_ext)] S0_with_creators = sig
+      [@kind_set.explicit_plus_unmangled ks = (value, base_or_null_with_ext)] S0_with_creators = sig
       include S0 [@kind_set.explicit ks] [@alloc a]
 
       include
@@ -435,16 +425,13 @@ module Definitions = struct
         type ('a : k, _, _) t := (t[@kind k'])
         type (_ : k) elt := (elt[@kind k'])]
     end
-
-    module type S0_with_creators = S0_with_creators [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
   end
 
   [@@@kind_set ks = (value, value_or_null, base_or_null_with_ext)]
 
   include struct
     [@@@alloc.default a]
-    [@@@kind_set.default.explicit ks]
+    [@@@kind_set.default.explicit_plus_unmangled ks]
 
     module type S1_with_creators = sig
       include S1 [@kind_set.explicit ks] [@alloc a]
@@ -466,10 +453,6 @@ module Definitions = struct
         type ('a : k, _, _) t := ('a t[@kind k'])
         type ('a : k) elt := 'a]
     end
-
-    module type%template S1_with_creators = S1_with_creators
-    [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value] [@@alloc a]
   end]
 
   module type Make_gen_arg = sig

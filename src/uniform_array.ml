@@ -8,9 +8,10 @@ module Trusted : sig @@ portable
   type ('a : value_or_null) t : mutable_data with 'a
 
   val empty : ('a : value_or_null). 'a t
-  val get_empty : ('a : value_or_null). unit -> 'a t
+  val get_empty : ('a : value_or_null). unit -> 'a t [@@zero_alloc]
   val unsafe_create_uninitialized : ('a : value_or_null). len:int -> 'a t
   val create_obj_array : ('a : value_or_null). len:int -> 'a t
+  val create_nullable_obj_array : ('a : value_or_null). len:int -> 'a t
   val create : ('a : value_or_null). len:int -> 'a -> 'a t
   val singleton : ('a : value_or_null). 'a -> 'a t
   val get : ('a : value_or_null). local_ 'a t -> int -> 'a [@@zero_alloc]
@@ -65,6 +66,7 @@ end = struct
   let[@inline] get_empty () = { arr = Obj_array.get_empty () }
   let unsafe_create_uninitialized ~len = { arr = Obj_array.create_zero ~len }
   let create_obj_array ~len = { arr = Obj_array.create_zero ~len }
+  let create_nullable_obj_array ~len = { arr = Obj_array.create_zero ~len }
   let create ~len x = { arr = Obj_array.create ~len (repr x) }
   let singleton x = { arr = Obj_array.singleton (repr x) }
   let swap t i j : unit = Obj_array.swap t.arr i j

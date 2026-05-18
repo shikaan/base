@@ -22,7 +22,10 @@
     - [Comparable], [Comparator], and [Comparisons] in lieu of polymorphic compare.
     - [Container], which provides a consistent interface across container-like data
       structures (arrays, lists, strings).
-    - [Result], [Error], and [Or_error], supporting the or-error pattern. *)
+    - [Result], [Error], and [Or_error], supporting the or-error pattern.
+
+    Base turns on backtraces by default at startup. See [Backtrace.Exn], specifically the
+    documentation of the initial value for [am_recording ()], for details. *)
 
 (*_ We hide this from the web docs because the line wrapping is bad, making it pretty much
     inscrutable. *)
@@ -205,6 +208,8 @@ module Export = struct
     [@@deriving
       compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar]]
 
+  type nonrec floatarray = floatarray [@@deriving globalize, sexp ~stackify, sexp_grammar]
+
   type bool = Bool.t
   [@@deriving
     compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
@@ -266,11 +271,14 @@ module Export = struct
   [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar]
 
   type string = String.t
-  [@@deriving
-    compare ~localize, equal ~localize, globalize, hash, sexp ~stackify, sexp_grammar]
+  [@@deriving compare ~localize, equal ~localize, hash, sexp ~stackify, sexp_grammar]
+
+  let globalize_string : string @ local -> string @ unique = Globalize.globalize_string
 
   type bytes = Bytes.t
-  [@@deriving compare ~localize, equal ~localize, globalize, sexp ~stackify, sexp_grammar]
+  [@@deriving compare ~localize, equal ~localize, sexp ~stackify, sexp_grammar]
+
+  let globalize_bytes : bytes @ local -> bytes @ unique = Globalize.globalize_bytes
 
   type unit = Unit.t
   [@@deriving
@@ -412,6 +420,10 @@ module Export = struct
   type 'a or_null = 'a Or_null.t
   [@@or_null_reexport]
   [@@deriving compare ~localize, equal ~localize, globalize, hash, sexp ~stackify]
+
+  let%template[@alloc a = (heap, stack)] maybe_globalize =
+    (Globalize.maybe_globalize [@alloc a])
+  ;;
 end
 
 include Export
@@ -419,6 +431,8 @@ include Export
 include Container.Export (** @inline *)
 
 include Modes.Export (** @inline *)
+
+include Ppx_enumerate_lib.Export
 
 exception Not_found_s = Not_found_s
 

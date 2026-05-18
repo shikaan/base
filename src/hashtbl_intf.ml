@@ -140,6 +140,16 @@ module Definitions = struct
       -> if_not_found:local_ ('a key -> 'd -> 'e -> 'c)
       -> 'c]
 
+    (** [change_or_null t ~f] is like [change t ~f], but the function [f] receives and
+        returns ['v or_null] instead of ['v option]. If [f] returns [Null], value at the
+        key is removed, and if [f] returns [This data], value at key is replaced with
+        [data]. *)
+    val change_or_null
+      :  ('a, 'b) t
+      -> 'a key
+      -> f:local_ ('b or_null -> 'b or_null)
+      -> unit
+
     (** [equal f t1 t2] and [similar f t1 t2] both return true iff [t1] and [t2] have the
         same keys and for all keys [k], [f (find_exn t1 k) (find_exn t2 k)]. [equal] and
         [similar] only differ in their types. *)
@@ -600,7 +610,7 @@ module Definitions = struct
         -> unit
 
       val fold
-        : ('k : k) ('v : v) 'acc.
+        : ('k : k) ('v : v) ('acc : value_or_null).
         ('k, 'v) t @ c
         -> init:'acc
         -> f:local_ (key:'k @ c -> data:'v @ c -> 'acc -> 'acc)

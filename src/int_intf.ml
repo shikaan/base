@@ -101,7 +101,7 @@ module Definitions = struct
     include Intable.S with type t := t
 
     include%template Identifiable.S [@mode local] [@modality portable] with type t := t
-    include%template Stringable.S_local_input [@alloc stack] with type t := t
+    include%template Stringable.S [@mode local] [@alloc stack] with type t := t
 
     include Comparable.With_zero with type t := t
     include Invariant.S with type t := t

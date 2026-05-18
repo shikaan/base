@@ -486,6 +486,8 @@ let init len ~f =
 
 let of_array a = init (Array.length a) ~f:(Array.unsafe_get a)
 let to_array t = Array.init t.length ~f:(fun i -> unsafe_get t i)
+let of_iarray iarray = of_array (Iarray.unsafe_to_array__promise_no_mutation iarray)
+let to_iarray t = Iarray.unsafe_of_array__promise_no_mutation (to_array t)
 
 let map ta ~f =
   let num_mutations = ta.num_mutations in

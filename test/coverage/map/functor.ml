@@ -478,6 +478,7 @@ module Test_accessors
 
   and mem = mem
   and find = find
+  and find_or_null = find_or_null
   and find_exn = find_exn
 
   and () =
@@ -488,7 +489,11 @@ module Test_accessors
       require_equal (module Data.Option (Int)) (access find t key) expect;
       require_equal
         (module Data.Option (Int))
-        (Option.try_with (fun () -> access find_exn t key))
+        (Or_null.to_option (access find_or_null t key))
+        expect;
+      require_equal
+        (module Data.Option (Int))
+        (Option.try_with (fun () -> (access find_exn) ~here:[%here] t key))
         expect)
 
   and find_multi = find_multi
@@ -1049,6 +1054,27 @@ module Test_transformers
       in
       require_equal (module Inst.Value) actual expect)
 
+  and change_or_null = change_or_null
+
+  and () =
+    quickcheck_m (module Inst_and_key_and_maybe_data) ~f:(fun (t, key, maybe_data) ->
+      let t = Inst.value t in
+      let or_null = Or_null.of_option maybe_data in
+      let actual =
+        access change_or_null t key ~f:(fun previous ->
+          require_equal
+            (module Data.Option (Int))
+            (Or_null.to_option previous)
+            (access find t key);
+          or_null)
+      in
+      let expect =
+        match maybe_data with
+        | None -> access remove t key
+        | Some data -> access set t ~key ~data
+      in
+      require_equal (module Inst.Value) actual expect)
+
   and update = update
 
   and () =
@@ -1136,6 +1162,9 @@ module Test_transformers
 
   and filter_map = filter_map
   and filter_mapi = filter_mapi
+  and filter_map_or_null = filter_map_or_null
+  and filter_mapi_or_null = filter_mapi_or_null
+  and filter_opt = filter_opt
 
   and () =
     quickcheck_m (module Inst_and_key_and_data) ~f:(fun (t, k, d) ->
@@ -1151,7 +1180,28 @@ module Test_transformers
            (filter_mapi t ~f:(fun ~key ~data ->
               Option.some_if (Key.( <= ) key k && data >= d) (data - d))))
         (List.filter_map (to_alist t) ~f:(fun (key, data) ->
-           Option.some_if (Key.( <= ) key k && data >= d) (key, data - d))))
+           Option.some_if (Key.( <= ) key k && data >= d) (key, data - d)));
+      require_equal
+        (module Alist)
+        (to_alist
+           (filter_map_or_null t ~f:(fun data ->
+              if data >= d then This (data - d) else Null)))
+        (List.filter_map (to_alist t) ~f:(fun (key, data) ->
+           Option.some_if (data >= d) (key, data - d)));
+      require_equal
+        (module Alist)
+        (to_alist
+           (filter_mapi_or_null t ~f:(fun ~key ~data ->
+              if Key.( <= ) key k && data >= d then This (data - d) else Null)))
+        (List.filter_map (to_alist t) ~f:(fun (key, data) ->
+           Option.some_if (Key.( <= ) key k && data >= d) (key, data - d)));
+      require_equal
+        (module Alist)
+        (to_alist
+           (filter_opt (map t ~f:(fun data -> Option.some_if (data >= d) (data - d)))))
+        (List.filter_opt
+           (List.map (to_alist t) ~f:(fun (key, data) ->
+              Option.some_if (data >= d) (key, data - d)))))
 
   and partition_mapi = partition_mapi
   and partition_map = partition_map

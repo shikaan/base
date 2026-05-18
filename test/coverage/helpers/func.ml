@@ -7,7 +7,7 @@ include Func_intf.Definitions
    output value and a set of transitions to new outputs at intervals along the inputs. The
    transitions need not be sorted; the [apply] functions find the closest applicable
    input. *)
-type ('input, 'output) t =
+type ('input : value_or_null, 'output : value_or_null) t =
   { initial : 'output
   ; transitions : ('input * 'output) list
   }
@@ -22,7 +22,7 @@ let map { initial; transitions } ~i ~o =
   }
 ;;
 
-let apply (type a) t (module Input : With_compare with type t = a) x =
+let apply (type a : value_or_null) t (module Input : With_compare with type t = a) x =
   List.fold
     ~init:(None, t.initial)
     t.transitions
@@ -54,7 +54,7 @@ let apply3 t m1 m2 m3 x1 x2 x3 =
    would be assigned that output. Also return unmatched values that would get the
    [initial] output. *)
 let associate
-  (type a)
+  (type a : value_or_null)
   (module Input : With_compare with type t = a)
   ~sorted_transitions:transitions
   ~sorted_inputs:inputs
@@ -84,7 +84,7 @@ let split_transitions_by_input transitions =
 
 (* Produce a version of [t] where each of [inputs] is assigned a different output. *)
 let injective
-  (type a b)
+  (type (a : value_or_null) (b : value_or_null))
   { initial; transitions }
   (module Input : With_compare with type t = a)
   (module Output : Adjustable.S with type t = b)

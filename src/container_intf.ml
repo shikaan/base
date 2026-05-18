@@ -48,11 +48,8 @@ module Definitions = struct
         as well as in the symmetric case. *)
     val ( + ) : t @ m -> t @ m -> t @ m
   end
-  [@@kind.explicit
+  [@@kind
     k = (base_or_null, value & value, value & value & value, value & value & value & value)]
-  [@@mode m = (global, local)]
-
-  module type Summable = Summable [@kind.explicit value_or_null] [@mode m]
   [@@mode m = (global, local)]
 
   module type Generic_types = sig
@@ -70,10 +67,8 @@ module Definitions = struct
         element type (e.g. [char]; see [S0] and friends below). *)
     type ('a : k) elt : k
   end
-  [@@kind_set.explicit
+  [@@kind_set.explicit_plus_unmangled
     ks = (value, value_or_null, value mod external64, base, base_or_null_with_ext)]
-
-  module type Generic_types = Generic_types [@kind_set.explicit value]
 
   include struct
     [@@@alloc a @ m = (heap_global, stack_local)]
@@ -93,7 +88,7 @@ module Definitions = struct
 
     include struct
       [@@@alloc.default a]
-      [@@@kind_set.default.explicit ks]
+      [@@@kind_set.default.explicit_plus_unmangled ks]
 
       module type Generic_without_mem = sig
         include Generic_types [@kind_set.explicit ks]
@@ -193,8 +188,7 @@ module Definitions = struct
               the elements will be summed is unspecified. *)
           val sum
             : ('a : k1) ('sum : k2) 'p1 'p2.
-            ((module Summable with type t = 'sum)
-            [@mode mo] [@kind.explicit k2 or value_or_null])
+            ((module Summable with type t = 'sum)[@mode mo] [@kind k2 or value_or_null])
             -> ('a, 'p1, 'p2) t @ mi
             -> f:('a elt @ mi -> 'sum @ mo) @ local
             -> 'sum @ mo
@@ -298,10 +292,6 @@ module Definitions = struct
         end
       end
 
-      module type%template Generic_without_mem = Generic_without_mem
-      [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
-
       module type Generic = sig
         include Generic_without_mem [@kind_set.explicit ks] [@alloc a]
 
@@ -330,10 +320,6 @@ module Definitions = struct
         val mem : (('a, _, _) t[@kind k']) @ m -> ('a elt[@kind k']) @ m -> bool
         [@@mode m = (global, m)]
       end
-
-      module type%template Generic_for_s0 = Generic_for_s0
-      [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
     end
   end
 
@@ -352,7 +338,7 @@ module Definitions = struct
         e.g., string, which is a container of characters ([type elt = char]) and never of
         anything else. *)
     module type
-      [@kind_set.explicit
+      [@kind_set.explicit_plus_unmangled
         ks = (value, value_or_null, value mod external64, base_or_null_with_ext)] S0 = sig
       include sig
         [@@@kind.default k' = ks]
@@ -379,10 +365,8 @@ module Definitions = struct
       val to_array : (t[@kind k]) -> (elt[@kind k]) array
     end
 
-    module type S0 = S0 [@kind_set.explicit ks] [@alloc a] [@@kind_set ks = value]
-
     module type
-      [@kind_set.explicit
+      [@kind_set.explicit_plus_unmangled
         ks = (value, value_or_null, value mod external64, base_or_null_with_ext)] S0_phantom = sig
       include sig
         [@@@kind.default k' = ks]
@@ -408,9 +392,6 @@ module Definitions = struct
       (*_ This doesn't have a local version because arrays can't hold local values. *)
       val to_array : (_ t[@kind k]) -> (elt[@kind k]) array
     end
-
-    module type S0_phantom = S0_phantom [@kind_set.explicit ks] [@alloc a]
-    [@@kind_set ks = value]
   end
 
   include struct
@@ -419,7 +400,7 @@ module Definitions = struct
 
     include struct
       [@@@alloc.default a]
-      [@@@kind_set.default.explicit ks]
+      [@@@kind_set.default.explicit_plus_unmangled ks]
 
       (** Signature for polymorphic container, e.g., ['a list] or ['a array]. *)
 
@@ -443,9 +424,6 @@ module Definitions = struct
         val to_array : ('a : k mod separable). ('a t[@kind k]) -> 'a array
       end
 
-      module type%template S1 = S1 [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
-
       module type S1_phantom = sig
         type ('a : k mod separable, 'phantom) t [@@kind k = ks]
 
@@ -465,9 +443,6 @@ module Definitions = struct
         (*_ This doesn't have a local version because arrays can't hold local values. *)
         val to_array : ('a : k mod separable) 'p. (('a, 'p) t[@kind k]) -> 'a array
       end
-
-      module type%template S1_phantom = S1_phantom [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
 
       module type Creators = sig
         include Generic_types [@kind_set.explicit ks]
@@ -572,9 +547,6 @@ module Definitions = struct
         [@@mode mi = (global, m)] [@@alloc __ @ mo = (heap_global, a @ m)]
       end
 
-      module type%template Creators = Creators [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
-
       module type Generic_with_creators = sig
         include Generic [@kind_set.explicit ks] [@alloc a]
 
@@ -606,10 +578,6 @@ module Definitions = struct
           type ('a : k, 'b, 'c) t := (('a, 'b, 'c) t[@kind k'])
           type ('a : k) elt := ('a elt[@kind k'])]
       end
-
-      module type%template Generic_with_creators_for_s0 = Generic_with_creators_for_s0
-      [@kind_set.explicit ks]
-      [@@kind_set ks = value] [@@alloc a]
     end
   end
 
@@ -634,7 +602,7 @@ module Definitions = struct
           itself *)
 
       module type
-        [@kind_set.explicit ks = (value, base_or_null_with_ext)] S0_with_creators = sig
+        [@kind_set.explicit_plus_unmangled ks = (value, base_or_null_with_ext)] S0_with_creators = sig
         include sig
           [@@@kind.default k' = ks]
           [@@@kind k = k' mod separable]
@@ -664,16 +632,13 @@ module Definitions = struct
         val of_array : (elt[@kind k]) array @ m -> (t[@kind k]) @ m
         [@@alloc __ @ m = (heap_global, a @ m)]
       end
-
-      module type S0_with_creators = S0_with_creators [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value]
     end
 
     [@@@kind_set ks = (value, value_or_null, base_or_null_with_ext)]
 
     include struct
       [@@@alloc.default a]
-      [@@@kind_set.default.explicit ks]
+      [@@@kind_set.default.explicit_plus_unmangled ks]
 
       module type S1_with_creators = sig
         type ('a : k mod separable) t [@@kind k = ks]
@@ -699,10 +664,6 @@ module Definitions = struct
         val of_array : ('a : k mod separable). 'a array @ m -> ('a t[@kind k]) @ m
         [@@alloc __ @ m = (heap_global, a @ m)]
       end
-
-      module type%template S1_with_creators = S1_with_creators
-      [@kind_set.explicit ks] [@alloc a]
-      [@@kind_set ks = value] [@@alloc a]
     end
   end
 
@@ -901,8 +862,7 @@ module Definitions = struct
     val sum
       : 't ('a : k) ('sum : k).
       fold:(('t, 'a, 'sum) fold[@mode mi mo])
-      -> ((module Summable with type t = 'sum)
-         [@kind.explicit k or value_or_null] [@mode mo])
+      -> ((module Summable with type t = 'sum)[@kind k or value_or_null] [@mode mo])
       -> 't @ mi
       -> f:('a @ mi -> 'sum @ mo) @ local
       -> 'sum @ mo

@@ -509,17 +509,14 @@ let max_elt t ~compare =
 
 let[@inline always] findi_internal t ~(f @ local) ~if_found ~if_not_found =
   let length = length t in
-  if length = 0
-  then (if_not_found [@inlined]) ()
-  else (
-    let rec loop i =
-      if i < length
-      then (
-        let x = unsafe_get t i in
-        if (f [@inlined hint]) i x then (if_found [@inlined]) ~i ~value:x else loop (i + 1))
-      else (if_not_found [@inlined]) ()
-    in
-    (loop [@inlined]) 0 [@nontail])
+  let rec loop i =
+    if i < length
+    then (
+      let x = unsafe_get t i in
+      if (f [@inlined hint]) i x then (if_found [@inlined]) ~i ~value:x else loop (i + 1))
+    else (if_not_found [@inlined]) ()
+  in
+  (loop [@inlined]) 0 [@nontail]
 [@@kind k1 = k1, k2 = (value_or_null, k1, value_or_null & k1)]
 ;;
 
@@ -1035,6 +1032,22 @@ let map_inplace t ~f =
   for i = 0 to length t - 1 do
     unsafe_set t i (f (unsafe_get t i))
   done
+;;
+
+let find_or_null t ~(f @ local) =
+  (findi_internal [@inlined])
+    t
+    ~f:(fun _i x -> f x)
+    ~if_not_found:(fun () -> Null)
+    ~if_found:(fun ~i:_ ~value:v -> This v) [@nontail]
+;;
+
+let findi_or_null t ~(f @ local) =
+  (findi_internal [@inlined])
+    t
+    ~f
+    ~if_not_found:(fun () -> Null)
+    ~if_found:(fun ~i ~value:v -> This (i, v)) [@nontail]
 ;;
 
 let find_consecutive_duplicate t ~equal =

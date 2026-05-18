@@ -219,7 +219,7 @@ module%test _ : module type of Avltree = struct
     end
 
     let empty = (empty [@kind k v])
-    let get_empty = (get_empty [@kind k v])
+    let get_empty = [%eta1 get_empty [@kind k v]]
 
     let%test_unit _ =
       match (empty [@kind k v]), (get_empty [@kind k v]) () with

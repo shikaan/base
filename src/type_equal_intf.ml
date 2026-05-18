@@ -264,7 +264,7 @@ module type Type_equal = sig @@ portable
       types. Unlike values of type [Type_equal.t], values of type [Id.t] do have semantic
       content and must have a nontrivial runtime representation. *)
   module Id : sig
-    type ('a : any) t : value mod immutable [@@deriving sexp_of]
+    type ('a : any) t : value mod immutable non_float [@@deriving sexp_of]
 
     (** @inline *)
     include module type of Type_equal_id_defns (struct
@@ -302,9 +302,13 @@ module type Type_equal = sig @@ portable
 
         [same t1 t2 = is_some (same_witness t1 t2)]. *)
 
-    val same : (_ : any) t -> (_ : any) t -> bool
+    val same : (_ : any) t -> (_ : any) t -> bool [@@zero_alloc]
+
     val same_witness : ('a : any) ('b : any). 'a t -> 'b t -> ('a, 'b) equal option
+    [@@zero_alloc]
+
     val same_witness_exn : ('a : any) ('b : any). 'a t -> 'b t -> ('a, 'b) equal
+    [@@zero_alloc]
 
     module%template.portable Create0 (T : Arg0) : S0 with type t := T.t
     module%template.portable Create1 (T : Arg1) : S1 with type 'a t := 'a T.t

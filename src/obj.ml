@@ -10,7 +10,7 @@ external%template magic
 [@@mode
   c = (uncontended, shared, contended, read, immutable)
   , o = (many, once)
-  , p = (nonportable, shareable, portable, observing, stateless)
+  , p = (nonportable, shareable, portable, reading, stateless)
   , u = (aliased, unique)]
 
 external%template magic_portable
@@ -32,7 +32,7 @@ external%template magic_uncontended
 [@@layout_poly]
 [@@mode
   o = (many, once)
-  , p = (nonportable, shareable, portable, observing, stateless)
+  , p = (nonportable, shareable, portable, reading, stateless)
   , u = (aliased, unique)]
 
 external%template magic_many
@@ -273,4 +273,18 @@ module Nullable = struct
     end)
 
   let null_tag = 1010
+
+  external of_or_null
+    :  (Stdlib.Obj.t or_null[@local_opt])
+    -> (t[@local_opt])
+    @@ portable
+    = "%identity"
+
+  external to_or_null
+    :  (t[@local_opt])
+    -> (Stdlib.Obj.t or_null[@local_opt])
+    @@ portable
+    = "%identity"
 end
+
+external nullable : (t[@local_opt]) -> (Nullable.t[@local_opt]) @@ portable = "%obj_magic"

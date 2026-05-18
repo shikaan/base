@@ -735,7 +735,7 @@ module Definitions = struct
     module Terse : sig
       type nonrec t = t [@@deriving sexp ~stackify, sexp_grammar]
 
-      include Stringable.S_local_input with type t := t
+      include%template Stringable.S [@mode local] with type t := t
     end
   end
 end

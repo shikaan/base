@@ -363,6 +363,16 @@ module%test _ : module type of Queue = struct
     done
   ;;
 
+  let of_iarray = of_iarray
+  let to_iarray = to_iarray
+
+  let%test_unit _ =
+    for len = 0 to 4 do
+      let iarray = Iarray.init len ~f:Fn.id in
+      [%test_result: int iarray] (to_iarray (of_iarray iarray)) ~expect:iarray
+    done
+  ;;
+
   let compare = compare
   let compare__local = compare__local
   let equal = equal

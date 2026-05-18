@@ -570,7 +570,8 @@ module Definitions = struct
       type (+'a
            , +'locality)
            t :
-           immediate
+           value
+           mod everything
            with 'a @@ global
            with 'locality @@ aliased contended forkable many portable unyielding
 
@@ -609,7 +610,8 @@ module type Modes = sig @@ portable
       include Definitions.Global
     end
 
-    type ('a : value_or_null) t : value_or_null mod global = { global : 'a @@ global }
+    type ('a : value_or_null) t : value_or_null mod global = 'a Basement.Modes.global =
+      { global : 'a @@ global }
     [@@unboxed]
 
     include Global with type 'a t := 'a t (** @inline *)
@@ -621,6 +623,7 @@ module type Modes = sig @@ portable
     end
 
     type ('a : value_or_null) t : value_or_null mod portable =
+          'a Basement.Modes.portable =
       { portable : 'a @@ portable }
     [@@unboxed]
 
@@ -629,6 +632,7 @@ module type Modes = sig @@ portable
 
   module Contended : sig
     type ('a : value_or_null) t : value_or_null mod contended =
+          'a Basement.Modes.contended =
       { contended : 'a @@ contended }
     [@@unboxed] [@@deriving of_sexp]
 
@@ -638,41 +642,53 @@ module type Modes = sig @@ portable
   end
 
   module Shared : sig
-    type ('a : value_or_null) t = { shared : 'a @@ shared }
+    type ('a : value_or_null) t = 'a Basement.Modes.shared = { shared : 'a @@ shared }
     [@@unboxed] [@@deriving of_sexp]
   end
 
   module Portended : sig
     type ('a : value_or_null) t : value_or_null mod contended portable =
+          'a Basement.Modes.portended =
       { portended : 'a @@ contended portable }
     [@@unboxed]
   end
 
   module Many : sig
-    type ('a : value_or_null) t : value_or_null mod many = { many : 'a @@ many }
+    type ('a : value_or_null) t : value_or_null mod many = 'a Basement.Modes.many =
+      { many : 'a @@ many }
     [@@unboxed]
     [@@deriving compare ~localize, equal ~localize, hash, sexp_of ~stackify, sexp_grammar]
   end
 
   module Aliased : sig
-    type ('a : value_or_null) t : value_or_null mod aliased = { aliased : 'a @@ aliased }
+    type ('a : value_or_null) t : value_or_null mod aliased = 'a Basement.Modes.aliased =
+      { aliased : 'a @@ aliased }
     [@@unboxed]
+
+    (** Construct a [t] *)
+    val wrap : 'a -> 'a t
+
+    (** Access the contents of a [t] *)
+    val unwrap : 'a t -> 'a
   end
 
   module Aliased_many : sig
     type ('a : value_or_null) t : value_or_null mod aliased many =
+          'a Basement.Modes.aliased_many =
       { aliased_many : 'a @@ aliased many }
     [@@unboxed]
   end
 
   module Forkable : sig
     type ('a : value_or_null) t : value_or_null mod forkable =
+          'a Basement.Modes.forkable =
       { forkable : 'a @@ forkable }
     [@@unboxed]
   end
 
   module Unyielding : sig
     type ('a : value_or_null) t : value_or_null mod unyielding =
+          'a Basement.Modes.unyielding =
       { unyielding : 'a @@ unyielding }
     [@@unboxed]
     [@@deriving compare ~localize, equal ~localize, hash, sexp ~stackify, sexp_grammar]
@@ -680,26 +696,31 @@ module type Modes = sig @@ portable
 
   module Stateless : sig
     type ('a : value_or_null) t : value_or_null mod stateless =
+          'a Basement.Modes.stateless =
       { stateless : 'a @@ stateless }
     [@@unboxed]
   end
 
-  module Observing : sig
-    type ('a : value_or_null) t = { observing : 'a @@ observing } [@@unboxed]
+  module Reading : sig
+    type ('a : value_or_null) t = 'a Basement.Modes.reading = { reading : 'a @@ reading }
+    [@@unboxed]
   end
 
   module Immutable : sig
     type ('a : value_or_null) t : value_or_null mod immutable =
+          'a Basement.Modes.immutable =
       { immutable : 'a @@ immutable }
     [@@unboxed]
   end
 
   module Read : sig
-    type ('a : value_or_null) t = { read : 'a @@ read } [@@unboxed]
+    type ('a : value_or_null) t = 'a Basement.Modes.read = { read : 'a @@ read }
+    [@@unboxed]
   end
 
   module Immutable_data : sig
     type ('a : value mod non_float) t : immutable_data =
+          'a Basement.Modes.immutable_data =
       { immutable_data : 'a @@ forkable immutable many stateless unyielding }
     [@@unboxed]
   end
@@ -745,7 +766,8 @@ module type Modes = sig @@ portable
     type (+!'a
          , +'portability)
          t :
-         immediate
+         value
+         mod everything
          with 'a @@ portable
          with 'portability @@ aliased contended forkable global many unyielding
     [@@allow_redundant_modalities
@@ -985,7 +1007,7 @@ module type Modes = sig @@ portable
       { stateless : 'a @@ stateless }
     [@@unboxed]
 
-    type ('a : value_or_null) observing = 'a Observing.t = { observing : 'a @@ observing }
+    type ('a : value_or_null) reading = 'a Reading.t = { reading : 'a @@ reading }
     [@@unboxed]
 
     type ('a : value_or_null) immutable : value_or_null mod immutable = 'a Immutable.t =

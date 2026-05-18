@@ -455,6 +455,56 @@ let%test_unit _ =
     ]
 ;;
 
+let%test_unit "find_or_null returns Null on empty" =
+  [%test_result: int Or_null.t] (find_or_null [||] ~f:(fun _ -> true)) ~expect:Null
+;;
+
+let%test_unit "find_or_null returns Null when no element matches" =
+  [%test_result: int Or_null.t]
+    (find_or_null [| 1; 2; 3 |] ~f:(fun x -> x > 10))
+    ~expect:Null
+;;
+
+let%test_unit "find_or_null returns the first matching element" =
+  [%test_result: int Or_null.t]
+    (find_or_null [| 1; 2; 3; 4 |] ~f:(fun x -> x % 2 = 0))
+    ~expect:(This 2)
+;;
+
+let%test_unit "find_or_null agrees with find" =
+  Base_quickcheck.Test.run_exn (module Int_t) ~f:(fun t ->
+    let f x = x % 3 = 0 in
+    [%test_result: int option]
+      (find_or_null t ~f |> Or_null.to_option)
+      ~expect:(find t ~f))
+;;
+
+let%test_unit "findi_or_null returns Null on empty" =
+  [%test_result: (int * int) Or_null.t]
+    (findi_or_null [||] ~f:(fun _ _ -> true))
+    ~expect:Null
+;;
+
+let%test_unit "findi_or_null returns Null when no element matches" =
+  [%test_result: (int * int) Or_null.t]
+    (findi_or_null [| 1; 2; 3 |] ~f:(fun _ x -> x > 10))
+    ~expect:Null
+;;
+
+let%test_unit "findi_or_null returns the first matching index and element" =
+  [%test_result: (int * int) Or_null.t]
+    (findi_or_null [| 1; 2; 1; 4 |] ~f:(fun i x -> i = 2 * x))
+    ~expect:(This (2, 1))
+;;
+
+let%test_unit "findi_or_null agrees with findi" =
+  Base_quickcheck.Test.run_exn (module Int_t) ~f:(fun t ->
+    let f i x = (i + x) % 3 = 0 in
+    [%test_result: (int * int) option]
+      (findi_or_null t ~f |> Or_null.to_option)
+      ~expect:(findi t ~f))
+;;
+
 let%test_unit _ = [%test_result: int option] (random_element [||]) ~expect:None
 let%test_unit _ = [%test_result: int option] (random_element [| 0 |]) ~expect:(Some 0)
 

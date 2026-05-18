@@ -98,6 +98,19 @@ module%template.portable Infix (T : sig
 end
 [@@inline always]
 
+module%template.portable Infix_with_zero_alloc (T : sig
+    type t [@@deriving (compare [@mode.explicit m]) ~zero_alloc]
+  end) : Infix_with_zero_alloc with type t := T.t = struct
+  let _ : _ = T.compare [@mode m]
+  let ( > ) a b = T.compare a b > 0
+  let ( < ) a b = T.compare a b < 0
+  let ( >= ) a b = T.compare a b >= 0
+  let ( <= ) a b = T.compare a b <= 0
+  let ( = ) a b = T.compare a b = 0
+  let ( <> ) a b = T.compare a b <> 0
+end
+[@@inline always]
+
 module%template.portable
   [@modality p] Comparisons (T : sig
     type t [@@deriving compare [@mode.explicit m]]
@@ -110,6 +123,19 @@ module%template.portable
     (equal [@mode m]) (T.compare [@mode m]) x y
   ;;
 
+  let min t t' = min compare t t'
+  let max t t' = max compare t t'
+end
+[@@inline always]
+
+module%template.portable
+  [@modality p] Comparisons_with_zero_alloc (T : sig
+    type t [@@deriving (compare [@mode.explicit m]) ~zero_alloc]
+  end) : Comparisons_with_zero_alloc [@mode m] with type t := T.t = struct
+  include Infix_with_zero_alloc [@mode m] [@modality p] (T)
+
+  let[@mode m = (global, m)] compare x y = (T.compare [@mode m]) x y
+  let[@mode m = (global, m)] [@inline] equal x y = equal_int ((T.compare [@mode m]) x y) 0
   let min t t' = min compare t t'
   let max t t' = max compare t t'
 end

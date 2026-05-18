@@ -70,7 +70,7 @@ type ('k : k, 'v : v) t := (('k, 'v) t[@kind k v])
 [@@@kind.default k v]
 
 val empty : ('k, 'v) t
-val get_empty : ('k : k) ('v : v). unit -> ('k, 'v) t
+val get_empty : ('k : k) ('v : v). unit -> ('k, 'v) t [@@zero_alloc]
 val is_empty : ('k : k) ('v : v). ('k, 'v) t @ contended -> bool
 
 (** Checks invariants, raising an exception if any invariants fail. *)
@@ -207,7 +207,7 @@ val remove
 
 (** Folds over the tree. *)
 val fold
-  : ('k : k) ('v : v) 'acc.
+  : ('k : k) ('v : v) ('acc : value_or_null).
   ('k, 'v) t @ c
   -> init:'acc
   -> f:local_ (key:'k @ c -> data:'v @ c -> 'acc -> 'acc)

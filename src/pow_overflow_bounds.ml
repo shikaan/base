@@ -3,8 +3,8 @@
 open! Import
 module Iarray = Iarray0
 
-(* We have to use Int64.to_int_exn instead of int constants to make
-   sure that file can be preprocessed on 32-bit machines. *)
+(* We have to use Int64.to_int_exn instead of int constants to make sure that file can be
+   preprocessed on 32-bit machines. *)
 
 let overflow_bound_max_int32_value : int32 = 2147483647l
 

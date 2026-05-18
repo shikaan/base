@@ -8,12 +8,16 @@ module T = struct
   type t = char
   [@@deriving compare ~localize, hash, globalize, sexp ~stackify, sexp_grammar]
 
-  let to_string t = String.make 1 t
+  let%template[@alloc a = (heap, stack)] to_string t =
+    (String.make [@alloc a]) 1 t [@exclave_if_stack a]
+  ;;
 
-  let of_string s =
+  let%template of_string s =
     match String.length s with
-    | 1 -> s.[0]
-    | _ -> Printf.failwithf "Char.of_string: %S" s ()
+    | 1 -> String.unsafe_get s 0
+    | _ ->
+      failwith
+        (String.concat [ "Char.of_string: \""; (String.escaped [@alloc stack]) s; "\"" ])
   ;;
 end
 
@@ -25,6 +29,7 @@ include%template Identifiable.Make [@modality portable] (struct
     let module_name = "Base.Char"
   end)
 
+let of_string = T.of_string
 let pp fmt c = Stdlib.Format.fprintf fmt "%C" c
 
 (* Open replace_polymorphic_compare after including functor instantiations so they do not

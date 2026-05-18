@@ -21,7 +21,8 @@ type ('a : k) t = ( :: ) of 'a * ('a List.t[@kind k])
 [@@deriving compare ~localize, equal ~localize, sexp_of ~stackify]
 [@@kind k = all_ks_non_value]
 
-type ('a : value_or_null) t = ( :: ) of 'a * 'a list
+type ('a : value_or_null) t = 'a Nonempty_list_type.Nonempty_list.t =
+  | ( :: ) of 'a * 'a list
 [@@deriving compare ~localize, equal ~localize, hash, globalize]
 
 [%%rederive:
@@ -39,7 +40,7 @@ include%template
   [@kind value_or_null mod maybe_null] [@mode local]
   with type ('a : value_or_null) t := 'a t
 
-include Indexed_container.S1 with type 'a t := 'a t
+include Indexed_container.S1 [@alloc stack] with type 'a t := 'a t
 
 (*_ Unmangled [t] gets shadowed below, so we alias a mangled [t] to it first. *)
   type%template ('a : value_or_null) t := ('a t[@kind k])
@@ -88,29 +89,32 @@ val last : ('a : k). 'a t @ m -> 'a @ m]
 type ('a : k) t := ('a t[@kind.explicit k])
 
 [@@@kind.default k]
-[@@@alloc.default __ @ m = (stack_local, heap_global)]
+[@@@alloc.default a @ l = (stack_local, heap_global)]
 
-val create : ('a : k). 'a @ m -> ('a List.t[@kind k]) @ m -> 'a t @ m
+val create : ('a : k). 'a @ l -> ('a List.t[@kind k]) @ l -> 'a t @ l
+[@@zero_alloc_if_stack a]
 
 (** [init n ~f] creates a list of length [n] where the element at index [i] is the value
     of [f i]. Raises if [n < 1]. [f] is called on indices from the highest to lowest, so
     the order of side effects is reversed: [Nonempty_list.init 3 ~f:print_int] prints
 
     [210]. *)
-val init : ('a : k). int -> f:(int -> 'a @ m) @ local -> 'a t @ m
+val init : ('a : k). int -> f:(int -> 'a @ l) @ local -> 'a t @ l
 
-val append : ('a : k). 'a t @ m -> ('a List.t[@kind k]) @ m -> 'a t @ m
-[@@zero_alloc_if_local m]
+val append : ('a : k). 'a t @ l -> ('a List.t[@kind k]) @ l -> 'a t @ l
+[@@zero_alloc_if_stack a]
 
-val filter : ('a : k). 'a t @ m -> f:('a @ m -> bool) @ local -> ('a List.t[@kind k]) @ m
+val filter : ('a : k). 'a t @ l -> f:('a @ l -> bool) @ local -> ('a List.t[@kind k]) @ l
 
 val filteri
   : ('a : k).
-  'a t @ m -> f:(int -> 'a @ m -> bool) @ local -> ('a List.t[@kind k]) @ m
+  'a t @ l -> f:(int -> 'a @ l -> bool) @ local -> ('a List.t[@kind k]) @ l
 
-val singleton : ('a : k). 'a @ m -> 'a t @ m [@@zero_alloc_if_local m]
-val cons : ('a : k). 'a @ m -> 'a t @ m -> 'a t @ m [@@zero_alloc_if_local m]
-val reverse : ('a : k). 'a t @ m -> 'a t @ m [@@zero_alloc_if_local m]]
+val singleton : ('a : k). 'a @ l -> 'a t @ l [@@zero_alloc_if_stack a]
+val cons : ('a : k). 'a @ l -> 'a t @ l -> 'a t @ l [@@zero_alloc_if_stack a]
+
+val reverse : ('a : k). 'a t @ l u -> 'a t @ l u
+[@@mode u = (aliased, unique)] [@@zero_alloc_if_stack a]]
 
 [%%template:
 [@@@kind.default ka = all_ks, kb = all_ks]
@@ -140,11 +144,19 @@ val filter_map
   -> f:('a @ ma -> ('b Option.t[@kind kb]) @ mb) @ local
   -> ('b List.t[@kind kb]) @ mb
 
+val filter_map_or_null
+  : ('a : ka) 'b.
+  ('a t[@kind ka]) @ ma -> f:('a @ ma -> 'b or_null @ mb) @ local -> 'b List.t @ mb
+
 val filter_mapi
   : ('a : ka) ('b : kb).
   ('a t[@kind ka]) @ ma
   -> f:(int -> 'a @ ma -> ('b Option.t[@kind kb]) @ mb) @ local
   -> ('b List.t[@kind kb]) @ mb
+
+val filter_mapi_or_null
+  : ('a : ka) 'b.
+  ('a t[@kind ka]) @ ma -> f:(int -> 'a @ ma -> 'b or_null @ mb) @ local -> 'b List.t @ mb
 
 val concat_map
   : ('a : ka) ('b : kb).
@@ -221,9 +233,14 @@ val fold_map
 
 val findi_exn : 'a t -> f:(int -> 'a -> bool) @ local -> int * 'a
 
+[%%template:
+[@@@mode.default l = (global, local)]
+
 (** [all_equal] returns a single element of the list that is equal to all other elements,
     or [None] if no such element exists. *)
-val all_equal : 'a t -> equal:local_ ('a -> 'a -> bool) -> 'a Option.t
+val all_equal
+  : ('a : value_or_null).
+  'a t @ l -> equal:('a @ l -> 'a @ l -> bool) @ local -> 'a option @ l]
 
 (** [is_sorted t ~compare] returns [true] iff for all adjacent [a1; a2] in [t],
     [compare a1 a2 <= 0]. *)

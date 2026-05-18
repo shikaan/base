@@ -51,6 +51,17 @@ module Primitives = struct
     @@ portable
     = "%bytes_unsafe_set"
 
+  external unsafe_blit
+    :  src:(bytes[@local_opt]) @ read
+    -> src_pos:int
+    -> dst:(bytes[@local_opt])
+    -> dst_pos:int
+    -> len:int
+    -> unit
+    @@ portable
+    = "caml_blit_bytes"
+  [@@noalloc]
+
   (* [unsafe_blit_string] is not exported in the [stdlib] so we export it here *)
   external unsafe_blit_string
     :  src:(string[@local_opt])
@@ -114,10 +125,16 @@ include Primitives
 let max_length = Sys.max_string_length
 
 let blit ~src ~src_pos ~dst ~dst_pos ~len =
-  Stdlib.Bytes.blit ~src ~src_pos ~dst ~dst_pos ~len
+  if len < 0
+     || src_pos < 0
+     || src_pos > length src - len
+     || dst_pos < 0
+     || dst_pos > length dst - len
+  then invalid_arg "Bytes.blit"
+  else unsafe_blit ~src ~src_pos ~dst ~dst_pos ~len
 ;;
 
-external string_length : string @ local shared -> int @@ portable = "%string_length"
+external string_length : string @ local -> int @@ portable = "%string_length"
 
 let blit_string ~(src @ local) ~src_pos ~(dst @ local) ~dst_pos ~len =
   if len < 0
@@ -130,7 +147,8 @@ let blit_string ~(src @ local) ~src_pos ~(dst @ local) ~dst_pos ~len =
 ;;
 
 let compare = Stdlib.Bytes.compare
-let create = Stdlib.Bytes.create
+
+external create : int -> bytes @ unique @@ portable = "caml_create_bytes"
 
 include struct
   open struct
@@ -295,7 +313,7 @@ end
 
 external unsafe_create_local
   :  int
-  -> local_ bytes
+  -> bytes @ local unique
   @@ portable
   = "Base_unsafe_create_local_bytes"
 [@@noalloc]
@@ -323,79 +341,18 @@ let fill (local_ t) ~pos ~len c =
   else unsafe_fill t ~pos ~len c
 ;;
 
-let%template[@alloc a = (heap, stack)] make n c =
-  (let t = (create [@alloc a]) n in
-   unsafe_fill t ~pos:0 ~len:n c;
-   t)
-  [@exclave_if_stack a]
-;;
-
 let empty = Stdlib.Bytes.empty
 let get_empty () = Portability_hacks.magic_uncontended__promise_deeply_immutable empty
-
-let map (local_ t) ~(local_ f : _ -> _) =
-  let l = length t in
-  if l = 0
-  then get_empty ()
-  else (
-    let r = create l in
-    for i = 0 to l - 1 do
-      unsafe_set r i (f (unsafe_get t i))
-    done;
-    r)
-;;
-
-let%template[@alloc stack] map (local_ t) ~(local_ f : _ -> _) = exclave_
-  let l = length t in
-  if l = 0
-  then get_empty ()
-  else (
-    let r = create_local l in
-    for i = 0 to l - 1 do
-      unsafe_set r i (f (unsafe_get t i))
-    done;
-    r)
-;;
-
-let mapi (local_ t) ~(local_ f : _ -> _ -> _) =
-  let l = length t in
-  if l = 0
-  then get_empty ()
-  else (
-    let r = create l in
-    for i = 0 to l - 1 do
-      unsafe_set r i (f i (unsafe_get t i))
-    done;
-    r)
-;;
-
-external unsafe_blit
-  :  src:(bytes[@local_opt])
-  -> src_pos:int
-  -> dst:(bytes[@local_opt])
-  -> dst_pos:int
-  -> len:int
-  -> unit
-  @@ portable
-  = "caml_blit_bytes"
-[@@noalloc]
-
-(* This is lifted from [Stdlib], but templated *)
-let%template[@alloc a = (heap, stack)] sub src ~pos:src_pos ~len =
-  if [@exclave_if_stack a] src_pos < 0 || len < 0 || src_pos > length src - len
-  then invalid_arg "Bytes0.sub"
-  else (
-    let dst = (create [@alloc a]) len in
-    unsafe_blit ~src ~src_pos ~dst ~dst_pos:0 ~len;
-    dst)
-;;
-
-let to_string = Stdlib.Bytes.to_string
-let of_string = Stdlib.Bytes.of_string
 
 external unsafe_to_string
   :  no_mutation_while_string_reachable:(bytes[@local_opt])
   -> (string[@local_opt])
+  @@ portable
+  = "%bytes_to_string"
+
+external unique_to_string
+  :  (bytes[@local_opt]) @ unique
+  -> (string[@local_opt]) @ unique
   @@ portable
   = "%bytes_to_string"
 
@@ -405,11 +362,61 @@ external unsafe_of_string_promise_no_mutation
   @@ portable
   = "%bytes_of_string"
 
-let%template copy (local_ src) =
+[%%template
+[@@@alloc.default a = (heap, stack)]
+
+let make n c =
+  (let t = (create [@alloc a]) n in
+   unsafe_fill (borrow_ t) ~pos:0 ~len:n c;
+   t)
+  [@exclave_if_stack a]
+;;
+
+let map t ~f =
+  let l = length t in
+  if [@exclave_if_stack a] l = 0
+  then Obj.magic_unique (unsafe_of_string_promise_no_mutation "")
+  else (
+    let r = (create [@alloc a]) l in
+    for i = 0 to l - 1 do
+      unsafe_set (borrow_ r) i (f (unsafe_get t i))
+    done;
+    r)
+;;
+
+let mapi t ~f =
+  let l = length t in
+  if [@exclave_if_stack a] l = 0
+  then Obj.magic_unique (unsafe_of_string_promise_no_mutation "")
+  else (
+    let r = (create [@alloc a]) l in
+    for i = 0 to l - 1 do
+      unsafe_set (borrow_ r) i (f i (unsafe_get t i))
+    done;
+    r)
+;;
+
+let copy src =
   let len = length src in
   (let dst = (create [@alloc a]) len in
-   unsafe_blit ~src ~src_pos:0 ~dst ~dst_pos:0 ~len;
+   unsafe_blit ~src ~src_pos:0 ~dst:(borrow_ dst) ~dst_pos:0 ~len;
    dst)
   [@exclave_if_stack a]
-[@@alloc a = (heap, stack)]
 ;;
+
+(* This is lifted from [Stdlib], but templated *)
+let sub src ~pos:src_pos ~len =
+  if [@exclave_if_stack a] src_pos < 0 || len < 0 || src_pos > length src - len
+  then invalid_arg "Bytes0.sub"
+  else (
+    let dst = (create [@alloc a]) len in
+    unsafe_blit ~src ~src_pos ~dst:(borrow_ dst) ~dst_pos:0 ~len;
+    dst)
+;;
+
+let to_string b = unique_to_string ((copy [@alloc a]) b) [@exclave_if_stack a]
+
+let of_string s =
+  (copy [@alloc a])
+    (unsafe_of_string_promise_no_mutation s) [@nontail] [@exclave_if_stack a]
+;;]

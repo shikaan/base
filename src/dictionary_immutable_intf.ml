@@ -55,7 +55,11 @@ module Definitions = struct
 
     (** Like [find]. Raises if there is no value for the given key. *)
     val find_exn
-      : (('key, 'data, 'phantom) t -> 'key key -> 'data, 'key, 'data, 'phantom) accessor
+      : ( here:[%call_pos] -> ('key, 'data, 'phantom) t -> 'key key -> 'data
+          , 'key
+          , 'data
+          , 'phantom )
+          accessor
 
     (** Produces the list associated with the corresponding key. Interprets a missing key
         as having an empty list. *)

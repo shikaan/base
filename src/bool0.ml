@@ -1,9 +1,9 @@
 [@@@warning "-incompatible-with-upstream"]
 
-external box_int64 : (int64#[@unboxed]) -> local_ int64 @@ portable = "%box_int64"
-external unbox_int64 : local_ int64 -> (int64#[@unboxed]) @@ portable = "%unbox_int64"
-external box_float : (float#[@unboxed]) -> local_ float @@ portable = "%box_float"
-external unbox_float : local_ float -> (float#[@unboxed]) @@ portable = "%unbox_float"
+external box_int64 : (int64#[@unboxed]) -> int64 @ local @@ portable = "%box_int64"
+external unbox_int64 : int64 @ local -> (int64#[@unboxed]) @@ portable = "%unbox_int64"
+external box_float : (float#[@unboxed]) -> float @ local @@ portable = "%box_float"
+external unbox_float : float @ local -> (float#[@unboxed]) @@ portable = "%unbox_float"
 
 external bits_of_float
   :  float @ local

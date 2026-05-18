@@ -21,7 +21,7 @@ type ('a : value_or_null) t : value mod contended portable = 'a Basement.Portabl
 val from_val : ('a : value_or_null). 'a @ contended portable -> 'a t
 
 (** [from_fun f] returns a suspension of the function [f]. Note that [f] must be
-    [portable], as it may be run by any domain. *)
+    [portable], as it may be run on any thread. *)
 val from_fun
   : ('a : value_or_null).
   (unit -> 'a @ contended portable) @ once portable -> 'a t

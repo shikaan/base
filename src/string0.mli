@@ -25,7 +25,10 @@ val max_length : int
 val ( ^ ) : string @ local -> string @ local -> string
 val capitalize : string -> string
 val compare : string -> string -> int
-val escaped : string -> string
+
+val%template escaped : string @ l -> string @ l
+[@@alloc a @ l = (heap @ global, stack @ local)]
+
 val sub : string -> pos:int -> len:int -> string
 val uncapitalize : string -> string
 val is_valid_utf_8 : string @ local -> bool

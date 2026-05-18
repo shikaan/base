@@ -1,4 +1,5 @@
 open! Import
+open Modes.Export
 include Iarray_intf.Definitions
 include Iarray0
 module I = Basement.Stdlib_iarray_labels
@@ -64,22 +65,20 @@ module%template Local0 = struct
        be overloaded via [[@local_opt]], but we don't do that in order to isolate the
        unsafety. *)
     external make_mutable_local
-      :  int
-      -> local_ 'a
-      -> local_ 'a array
+      : ('a : value_or_null mod separable).
+      int -> local_ 'a -> local_ 'a array
       @@ portable
       = "caml_array_make_local"
 
     external unsafe_set_local
-      :  local_ 'a array
-      -> int
-      -> local_ 'a
-      -> unit
+      : ('a : value_or_null mod separable).
+      local_ 'a array -> int -> local_ 'a -> unit
       @@ portable
       = "%array_unsafe_set"
 
     external unsafe_blit_local
-      :  src:local_ 'a t
+      : ('a : value_or_null mod separable).
+      src:local_ 'a t
       -> src_pos:int
       -> dst:local_ 'a array
       -> dst_pos:int
@@ -380,7 +379,7 @@ module%template Local0 = struct
 
   external to_array_of_immediates
     : ('a : immediate64_or_null).
-    local_ 'a iarray -> len:int -> local_ 'a array
+    'a iarray @ local -> len:int -> 'a array @ local
     @@ portable
     = "Base_iarray_to_array_of_immediates"
   [@@noalloc] [@@warning "-incompatible-with-upstream"]
@@ -576,10 +575,11 @@ let iteri t ~(local_ f : _ -> _ @ m -> _) =
 let iter t ~f = (iteri [@mode m]) t ~f:(fun _ x -> f x) [@nontail]]
 
 [%%template
-[@@@kind.default ka = value, kacc = base_or_null]
+[@@@kind.default ka = value_or_null, kacc = base_or_null]
+[@@@kind ka' = ka mod separable]
 [@@@mode.default mi = (global, local), mo = (global, local)]
 
-let foldi (type (a : ka) (acc : kacc)) (t : a t) ~(init : acc) ~(local_ f) : acc =
+let foldi (type (a : ka') (acc : kacc)) (t : a t) ~(init : acc) ~(local_ f) : acc =
   let n = length t in
   (let rec local_ loop pos acc =
      if [@exclave_if_local mo ~reasons:[ May_return_local ]] pos = n
@@ -598,7 +598,7 @@ let fold t ~init ~f =
   [@nontail] [@exclave_if_local mo ~reasons:[ May_return_local ]]
 ;;
 
-let fold_right (type (a : ka) (acc : kacc)) (t : a t) ~(init : acc) ~f =
+let fold_right (type (a : ka') (acc : kacc)) (t : a t) ~(init : acc) ~f =
   (let rec local_ loop pos acc =
      let pos = pos - 1 in
      if [@exclave_if_local mo ~reasons:[ May_return_local ]] pos < 0
@@ -727,7 +727,12 @@ let for_all t ~f = (for_alli [@mode m]) t ~f:(fun _ x -> f x) [@nontail]
 let count t ~f = (counti [@mode m]) t ~f:(fun _ x -> f x) [@nontail]]
 
 [%%template
-  let sum (type a) (module M : Container.Summable with type t = a[@mode mo]) t ~f =
+  let sum
+    (type a : value_or_null)
+    (module M : Container.Summable with type t = a[@mode mo])
+    t
+    ~f
+    =
     (fold [@mode mi mo]) t ~init:M.zero ~f:(fun acc x ->
       M.( + ) acc (f x) [@exclave_if_local mo ~reasons:[ May_return_local ]])
     [@nontail] [@exclave_if_local mo ~reasons:[ May_return_local ]]
@@ -755,6 +760,32 @@ let find t ~f =
     | true -> Some x
     | false -> None)
   [@nontail] [@exclave_if_local m ~reasons:[ May_return_local ]]
+;;
+
+let find_or_null t ~f =
+  let length = length t in
+  (let rec local_ loop pos =
+     if [@exclave_if_local m ~reasons:[ May_return_local ]] pos >= length
+     then Null
+     else (
+       let value = unsafe_get t pos in
+       if (f [@inlined hint]) value then This value else loop (pos + 1))
+   in
+   loop 0 [@nontail])
+  [@exclave_if_local m ~reasons:[ May_return_local ]]
+;;
+
+let findi_or_null t ~f =
+  let length = length t in
+  (let rec local_ loop pos =
+     if [@exclave_if_local m ~reasons:[ May_return_local ]] pos >= length
+     then Null
+     else (
+       let value = unsafe_get t pos in
+       if (f [@inlined hint]) pos value then This (pos, value) else loop (pos + 1))
+   in
+   loop 0 [@nontail])
+  [@exclave_if_local m ~reasons:[ May_return_local ]]
 ;;
 
 let[@inline] best_elt t ~first_is_better_than_second =
@@ -893,7 +924,7 @@ include struct
 
     external create_local
       : ('a : any mod separable).
-      len:int -> local_ 'a -> local_ 'a array
+      len:int -> 'a @ local -> 'a array @ local
       @@ portable
       = "%makearray_dynamic"
     [@@layout_poly]
@@ -1288,7 +1319,7 @@ module%template Local = struct
   include Local0
 
   [%%template
-  [@@@kind.default ka = value, kacc = base_or_null]
+  [@@@kind.default ka = value_or_null, kacc = base_or_null]
 
   let fold = (fold [@kind ka kacc] [@mode local local])
   let foldi = (foldi [@kind ka kacc] [@mode local local])
@@ -1397,6 +1428,12 @@ module Unique = struct
     *)
     Obj.magic_unique (zip_exn t1 t2)
   ;;
+
+  external of_array
+    :  ('a array[@local_opt]) @ unique
+    -> ('a global t[@local_opt]) @ unique
+    @@ portable
+    = "%array_to_iarray"
 end
 
 (** Binary search *)

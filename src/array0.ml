@@ -19,21 +19,21 @@ module Array = struct
   [%%template
     external create
       : ('a : any mod separable).
-      len:int -> 'a -> 'a array @ m
+      len:int -> 'a -> 'a array @ m unique
       @@ portable
       = "%makearray_dynamic"
     [@@alloc __ @ m = (heap_global, stack_local)] [@@layout_poly]]
 
   external create_local
     : ('a : any mod separable).
-    len:int -> 'a -> local_ 'a array
+    len:int -> 'a -> 'a array @ local unique
     @@ portable
     = "%makearray_dynamic"
   [@@layout_poly]
 
   external magic_create_uninitialized
     : ('a : any mod separable).
-    len:int -> ('a array[@local_opt])
+    len:int -> ('a array[@local_opt]) @ unique
     @@ portable
     = "%makearray_dynamic_uninit"
   [@@layout_poly]
@@ -295,7 +295,7 @@ let init len ~(local_ f : _ -> _) : (_ : k) array @ l =
   else (
     (let res = (create [@alloc a]) ~len (f 0) in
      for i = 1 to Int0.pred len do
-       unsafe_set res i (f i)
+       unsafe_set (borrow_ res) i (f i)
      done;
      res)
     [@exclave_if_stack a])
@@ -355,7 +355,7 @@ let swap (t : (_ : k) array @ local) i j =
 [@@@array.iter]
 
 [%%template
-  let iter (type a : ki mod separable) (t : a array) ~(local_ f : _ -> _) =
+  let iter (type a : ki mod separable) (t : a array) ~(f : (_ -> _) @ local) =
     for i = 0 to length t - 1 do
       f (unsafe_get t i)
     done
@@ -366,7 +366,7 @@ let swap (t : (_ : k) array @ local) i j =
 [@@@array.iteri]
 
 [%%template
-  let iteri (type a : ki mod separable) (t : a array) ~(local_ f : _ -> _ -> _) =
+  let iteri (type a : ki mod separable) (t : a array) ~(f : (_ -> _ -> _) @ local) =
     for i = 0 to length t - 1 do
       f i (unsafe_get t i)
     done
@@ -381,7 +381,7 @@ let swap (t : (_ : k) array @ local) i j =
     (type (a : ki mod separable) (b : ko))
     (t : a array)
     ~init
-    ~(local_ f : _ -> _ -> _)
+    ~(f : (_ -> _ -> _) @ local)
     : b
     =
     let length = length t in
@@ -400,8 +400,8 @@ let swap (t : (_ : k) array @ local) i j =
 [%%template
   let map
     (type (a : ki mod separable) (b : ko mod separable))
-    (local_ (t : a array))
-    ~(local_ f : _ -> _)
+    (t : a array @ local)
+    ~(f : (_ -> _) @ local)
     : b array
     =
     let len = length t in
@@ -419,8 +419,8 @@ let swap (t : (_ : k) array @ local) i j =
 [%%template
   let map
     (type (a : ki mod separable) (b : ko mod separable))
-    (local_ (t : a array))
-    ~(local_ f : _ -> _)
+    (t : a array @ local)
+    ~(f : (_ -> _) @ local)
     : b array
     =
     let len = length t in
@@ -444,7 +444,7 @@ let swap (t : (_ : k) array @ local) i j =
   let mapi
     (type (a : ki mod separable) (b : ko mod separable))
     (t : a array)
-    ~(local_ f : _ -> _ -> _)
+    ~(f : (_ -> _ -> _) @ local)
     : b array
     =
     let len = length t in
@@ -463,7 +463,7 @@ let swap (t : (_ : k) array @ local) i j =
   let mapi
     (type (a : ki mod separable) (b : ko mod separable))
     (t : a array)
-    ~(local_ f : _ -> _ -> _)
+    ~(f : (_ -> _ -> _) @ local)
     : b array
     =
     let len = length t in

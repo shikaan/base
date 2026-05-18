@@ -70,6 +70,8 @@ module Constructor = struct
     | Set of 'key * 'data * ('key, 'data) t [@weight rec_weight]
     | Change of 'key * ('data option, 'data option) Func.t * ('key, 'data) t
     [@weight rec_weight]
+    | Change_or_null of 'key * ('data or_null, 'data or_null) Func.t * ('key, 'data) t
+    [@weight rec_weight]
     | Update of 'key * ('data option, 'data) Func.t * ('key, 'data) t [@weight rec_weight]
     | Update_and_return of 'key * ('data option, 'data) Func.t * ('key, 'data) t
     [@weight rec_weight]
@@ -81,7 +83,12 @@ module Constructor = struct
     | Filteri of ('key, ('data, bool) Func.t) Func.t * ('key, 'data) t
     [@weight rec_weight]
     | Filter_map of ('data, 'data option) Func.t * ('key, 'data) t [@weight rec_weight]
+    | Filter_map_or_null of ('data, 'data or_null) Func.t * ('key, 'data) t
+    [@weight rec_weight]
     | Filter_mapi of ('key, ('data, 'data option) Func.t) Func.t * ('key, 'data) t
+    [@weight rec_weight]
+    | Filter_mapi_or_null of
+        ('key, ('data, 'data or_null) Func.t) Func.t * ('key, 'data) t
     [@weight rec_weight]
     | Partition_tf of Side.t * ('data, bool) Func.t * ('key, 'data) t [@weight rec_weight]
     | Partitioni_tf of Side.t * ('key, ('data, bool) Func.t) Func.t * ('key, 'data) t
@@ -169,6 +176,7 @@ module Constructor = struct
     | Add_exn (_, _, t) -> [ t ]
     | Set (_, _, t) -> [ t ]
     | Change (_, _, t) -> [ t ]
+    | Change_or_null (_, _, t) -> [ t ]
     | Update (_, _, t) -> [ t ]
     | Update_and_return (_, _, t) -> [ t ]
     | Remove (_, t) -> [ t ]
@@ -178,7 +186,9 @@ module Constructor = struct
     | Filter (_, t) -> [ t ]
     | Filteri (_, t) -> [ t ]
     | Filter_map (_, t) -> [ t ]
+    | Filter_map_or_null (_, t) -> [ t ]
     | Filter_mapi (_, t) -> [ t ]
+    | Filter_mapi_or_null (_, t) -> [ t ]
     | Partition_tf (_, _, t) -> [ t ]
     | Partitioni_tf (_, _, t) -> [ t ]
     | Partition_map (_, _, t) -> [ t ]
@@ -239,6 +249,7 @@ module Constructor = struct
       | Add_exn (key, _, t) -> key :: keys t
       | Set (key, _, t) -> key :: keys t
       | Change (key, _, t) -> key :: keys t
+      | Change_or_null (key, _, t) -> key :: keys t
       | Update (key, _, t) -> key :: keys t
       | Update_and_return (key, _, t) -> key :: keys t
       | Remove (key, t) -> key :: keys t
@@ -248,7 +259,9 @@ module Constructor = struct
       | Filter (_, t) -> keys t
       | Filteri (fn, t) -> Func.inputs fn @ keys t
       | Filter_map (_, t) -> keys t
+      | Filter_map_or_null (_, t) -> keys t
       | Filter_mapi (fn, t) -> Func.inputs fn @ keys t
+      | Filter_mapi_or_null (fn, t) -> Func.inputs fn @ keys t
       | Partition_tf (_, _, t) -> keys t
       | Partitioni_tf (_, fn, t) -> Func.inputs fn @ keys t
       | Partition_map (_, _, t) -> keys t
@@ -356,6 +369,9 @@ module Constructor = struct
     | Set (key, data, t) -> Set (k key, d data, map ~k ~d t)
     | Change (key, fn, t) ->
       Change (k key, Func.map ~i:(Option.map ~f:d) ~o:(Option.map ~f:d) fn, map ~k ~d t)
+    | Change_or_null (key, fn, t) ->
+      Change_or_null
+        (k key, Func.map ~i:(Or_null.map ~f:d) ~o:(Or_null.map ~f:d) fn, map ~k ~d t)
     | Update (key, fn, t) ->
       Update (k key, Func.map ~i:(Option.map ~f:d) ~o:d fn, map ~k ~d t)
     | Update_and_return (key, fn, t) ->
@@ -368,8 +384,13 @@ module Constructor = struct
     | Filteri (fn, t) ->
       Filteri (Func.map ~i:k ~o:(Func.map ~i:d ~o:Fn.id) fn, map ~k ~d t)
     | Filter_map (fn, t) -> Filter_map (Func.map ~i:d ~o:(Option.map ~f:d) fn, map ~k ~d t)
+    | Filter_map_or_null (fn, t) ->
+      Filter_map_or_null (Func.map ~i:d ~o:(Or_null.map ~f:d) fn, map ~k ~d t)
     | Filter_mapi (fn, t) ->
       Filter_mapi (Func.map ~i:k ~o:(Func.map ~i:d ~o:(Option.map ~f:d)) fn, map ~k ~d t)
+    | Filter_mapi_or_null (fn, t) ->
+      Filter_mapi_or_null
+        (Func.map ~i:k ~o:(Func.map ~i:d ~o:(Or_null.map ~f:d)) fn, map ~k ~d t)
     | Partition_tf (side, fn, t) ->
       Partition_tf (side, Func.map ~i:d ~o:Fn.id fn, map ~k ~d t)
     | Partitioni_tf (side, fn, t) ->
@@ -551,6 +572,7 @@ module Constructor = struct
         Add_exn (key, data, t)
       | Set (key, data, t) -> Set (key, data, normalize t)
       | Change (key, fn, t) -> Change (key, fn, normalize t)
+      | Change_or_null (key, fn, t) -> Change_or_null (key, fn, normalize t)
       | Update (key, fn, t) -> Update (key, fn, normalize t)
       | Update_and_return (key, fn, t) -> Update_and_return (key, fn, normalize t)
       | Remove (key, t) -> Remove (key, normalize t)
@@ -560,7 +582,9 @@ module Constructor = struct
       | Filter (fn, t) -> Filter (fn, normalize t)
       | Filteri (fn, t) -> Filteri (fn, normalize t)
       | Filter_map (fn, t) -> Filter_map (fn, normalize t)
+      | Filter_map_or_null (fn, t) -> Filter_map_or_null (fn, normalize t)
       | Filter_mapi (fn, t) -> Filter_mapi (fn, normalize t)
+      | Filter_mapi_or_null (fn, t) -> Filter_mapi_or_null (fn, normalize t)
       | Partition_tf (side, fn, t) -> Partition_tf (side, fn, normalize t)
       | Partitioni_tf (side, fn, t) -> Partitioni_tf (side, fn, normalize t)
       | Partition_map (side, fn, t) -> Partition_map (side, fn, normalize t)
@@ -640,6 +664,10 @@ module Constructor = struct
 
     module Data_option = struct
       type t = Data.t option [@@deriving compare, equal]
+    end
+
+    module Data_or_null = struct
+      type t = Data.t or_null [@@deriving compare, equal]
     end
 
     module Traversals = Impl.Make_applicative_traversals (struct
@@ -737,6 +765,11 @@ module Constructor = struct
       | Set (key, data, t) -> (access Impl.set) (value t) ~key ~data
       | Change (key, fn, t) ->
         (access Impl.change) (value t) key ~f:(Func.apply fn (module Data_option))
+      | Change_or_null (key, fn, t) ->
+        (access Impl.change_or_null)
+          (value t)
+          key
+          ~f:(Func.apply fn (module Data_or_null))
       | Update (key, fn, t) ->
         (access Impl.update) (value t) key ~f:(Func.apply fn (module Data_option))
       | Update_and_return (key, fn, t) ->
@@ -756,8 +789,13 @@ module Constructor = struct
         Impl.filteri (value t) ~f:(fun ~key ~data ->
           Func.apply2 fn (module Key) (module Data) key data)
       | Filter_map (fn, t) -> Impl.filter_map (value t) ~f:(Func.apply fn (module Data))
+      | Filter_map_or_null (fn, t) ->
+        Impl.filter_map_or_null (value t) ~f:(Func.apply fn (module Data))
       | Filter_mapi (fn, t) ->
         Impl.filter_mapi (value t) ~f:(fun ~key ~data ->
+          Func.apply2 fn (module Key) (module Data) key data)
+      | Filter_mapi_or_null (fn, t) ->
+        Impl.filter_mapi_or_null (value t) ~f:(fun ~key ~data ->
           Func.apply2 fn (module Key) (module Data) key data)
       | Partition_tf (side, fn, t) ->
         Impl.partition_tf (value t) ~f:(Func.apply fn (module Data)) |> Side.select side
@@ -949,12 +987,12 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
           % | size | count
         ----+------+------
           0 |    1 | 10000
-         50 |    5 |  5287
-         75 |   14 |  2518
-         90 |   34 |  1013
-         95 |   55 |   500
-         99 |  111 |   102
-        100 |  319 |     1
+         50 |    5 |  5595
+         75 |   15 |  2535
+         90 |   36 |  1024
+         95 |   56 |   506
+         99 |  115 |   101
+        100 |  283 |     1
         |}]
     ;;
 
@@ -985,6 +1023,7 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
   let of_list_with_key_multi = Map.of_list_with_key_multi
   let add_multi = Map.add_multi
   let remove_multi = Map.remove_multi
+  let filter_opt = Map.filter_opt
 
   (* Tests *)
 
@@ -998,7 +1037,7 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    80
+        - |    0 |    66
       |}]
   ;;
 
@@ -1012,7 +1051,7 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-      100 |    1 |    71
+      100 |    1 |    69
       |}]
   ;;
 
@@ -1026,14 +1065,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    71
+        - |    0 |    94
       ----+------+------
-        0 |    1 |   204
-       50 |    3 |   108
-       75 |    6 |    61
-       90 |   15 |    22
-       95 |   20 |    13
-      100 |   29 |     3
+        0 |    1 |   147
+       50 |    3 |    83
+       75 |    8 |    38
+       90 |   18 |    17
+       95 |   23 |     8
+       99 |   27 |     2
+      100 |   28 |     1
       |}]
   ;;
 
@@ -1047,15 +1087,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    90
+        - |    0 |    87
       ----+------+------
-        0 |    1 |   173
-       50 |    3 |   101
-       75 |    9 |    46
-       90 |   19 |    18
-       95 |   20 |    15
-       99 |   25 |     2
-      100 |   27 |     1
+        0 |    1 |   130
+       50 |    2 |    88
+       75 |    7 |    34
+       90 |   17 |    13
+       95 |   21 |     8
+       99 |   29 |     2
+      100 |   31 |     1
       |}]
   ;;
 
@@ -1069,14 +1109,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    11
+        - |    0 |     9
       ----+------+------
-        0 |    1 |    63
-       50 |   12 |    33
-       75 |   21 |    18
-       90 |   26 |     8
-       95 |   29 |     4
-      100 |   30 |     3
+        0 |    1 |    56
+       50 |    8 |    31
+       75 |   19 |    14
+       90 |   25 |     6
+       95 |   29 |     3
+      100 |   30 |     2
       |}]
   ;;
 
@@ -1090,13 +1130,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    15
+        - |    0 |    12
       ----+------+------
-        0 |    1 |    52
-       50 |   10 |    26
-       75 |   18 |    14
-       90 |   23 |     6
-       95 |   27 |     3
+        0 |    1 |    63
+       50 |    9 |    32
+       75 |   18 |    17
+       90 |   26 |     7
+       95 |   28 |     4
       100 |   30 |     1
       |}]
   ;;
@@ -1111,14 +1151,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    11
+        - |    0 |     8
       ----+------+------
         0 |    1 |    62
-       50 |   11 |    31
-       75 |   19 |    16
-       90 |   27 |     8
-       95 |   28 |     6
-      100 |   30 |     2
+       50 |    8 |    32
+       75 |   16 |    17
+       90 |   23 |     8
+       95 |   25 |     6
+      100 |   28 |     1
       |}]
   ;;
 
@@ -1132,14 +1172,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    13
+        - |    0 |    16
       ----+------+------
-        0 |    1 |    71
-       50 |   11 |    36
-       75 |   17 |    19
-       90 |   24 |     8
-       95 |   26 |     5
-      100 |   28 |     2
+        0 |    1 |    58
+       50 |   11 |    29
+       75 |   18 |    15
+       90 |   25 |     6
+       95 |   26 |     4
+      100 |   29 |     1
       |}]
   ;;
 
@@ -1153,14 +1193,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |     6
+        - |    0 |    15
       ----+------+------
-        0 |    1 |    61
-       50 |    9 |    32
-       75 |   19 |    16
-       90 |   25 |     9
-       95 |   28 |     4
-      100 |   29 |     1
+        0 |    1 |    66
+       50 |   10 |    34
+       75 |   19 |    18
+       90 |   25 |     7
+       95 |   27 |     6
+      100 |   30 |     2
       |}]
   ;;
 
@@ -1174,14 +1214,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    11
+        - |    0 |    14
       ----+------+------
-        0 |    1 |    62
-       50 |   12 |    32
-       75 |   20 |    18
-       90 |   26 |     7
-       95 |   28 |     4
-      100 |   30 |     2
+        0 |    1 |    53
+       50 |    9 |    29
+       75 |   18 |    14
+       90 |   25 |     6
+       95 |   27 |     4
+      100 |   29 |     1
       |}]
   ;;
 
@@ -1195,14 +1235,12 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    15
+        - |    0 |    10
       ----+------+------
-        0 |    1 |    76
-       50 |    3 |    51
-       75 |    4 |    27
-       90 |    5 |     8
-       95 |    6 |     4
-      100 |    7 |     1
+        0 |    1 |    69
+       50 |    3 |    47
+       90 |    4 |    23
+      100 |    5 |     6
       |}]
   ;;
 
@@ -1216,12 +1254,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    14
+        - |    0 |    16
       ----+------+------
-        0 |    1 |    63
+        0 |    1 |    64
        50 |    3 |    39
-       90 |    4 |    18
-      100 |    5 |     5
+       90 |    4 |    28
+       95 |    5 |     6
+      100 |    6 |     1
       |}]
   ;;
 
@@ -1237,12 +1276,12 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       ----+------+------
         - |    0 |     9
       ----+------+------
-        0 |    1 |    59
-       50 |   10 |    30
-       75 |   18 |    15
+        0 |    1 |    56
+       50 |    6 |    30
+       75 |   19 |    14
        90 |   25 |     6
-       95 |   28 |     3
-      100 |   31 |     1
+       95 |   27 |     3
+      100 |   30 |     1
       |}]
   ;;
 
@@ -1256,14 +1295,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |     8
+        - |    0 |    17
       ----+------+------
-        0 |    1 |    64
-       50 |   10 |    36
-       75 |   18 |    16
-       90 |   28 |     7
-       95 |   29 |     5
-      100 |   30 |     1
+        0 |    1 |    70
+       50 |   11 |    35
+       75 |   18 |    19
+       90 |   23 |    13
+       95 |   28 |     4
+      100 |   31 |     1
       |}]
   ;;
 
@@ -1277,14 +1316,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    13
+        - |    0 |     9
       ----+------+------
-        0 |    1 |    57
-       50 |   11 |    32
-       75 |   20 |    16
-       90 |   24 |     6
-       95 |   26 |     3
-      100 |   31 |     1
+        0 |    1 |    71
+       50 |   12 |    37
+       75 |   19 |    18
+       90 |   27 |     9
+       95 |   28 |     5
+      100 |   30 |     1
       |}]
   ;;
 
@@ -1298,13 +1337,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    15
+        - |    0 |    13
       ----+------+------
-        0 |    1 |    74
-       50 |    9 |    39
-       75 |   17 |    21
-       90 |   24 |     8
-       95 |   28 |     4
+        0 |    1 |    69
+       50 |   13 |    36
+       75 |   19 |    20
+       90 |   27 |     7
+       95 |   28 |     5
       100 |   31 |     1
       |}]
   ;;
@@ -1319,13 +1358,12 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    13
+        - |    0 |    10
       ----+------+------
-        0 |    1 |    77
-       50 |    3 |    46
-       90 |    4 |    27
-       95 |    5 |     6
-      100 |    6 |     1
+        0 |    1 |    54
+       50 |    3 |    38
+       95 |    4 |    24
+      100 |    5 |     2
       |}]
   ;;
 
@@ -1341,11 +1379,11 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       ----+------+------
         - |    0 |    13
       ----+------+------
-        0 |    1 |    54
-       50 |    3 |    32
-       75 |    4 |    18
-       95 |    5 |     6
-      100 |    6 |     1
+        0 |    1 |    62
+       50 |    3 |    41
+       75 |    4 |    26
+       95 |    5 |     7
+      100 |    6 |     2
       |}]
   ;;
 
@@ -1361,11 +1399,11 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       ----+------+------
         - |    0 |    10
       ----+------+------
-        0 |    1 |    71
-       50 |    8 |    38
-       75 |   16 |    19
-       90 |   26 |     8
-       95 |   28 |     5
+        0 |    1 |    65
+       50 |    7 |    33
+       75 |   18 |    17
+       90 |   23 |     8
+       95 |   25 |     5
       100 |   30 |     1
       |}]
   ;;
@@ -1380,14 +1418,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    11
+        - |    0 |    14
       ----+------+------
-        0 |    1 |    72
-       50 |    9 |    38
-       75 |   18 |    20
-       90 |   25 |     8
-       95 |   28 |     5
-      100 |   31 |     1
+        0 |    1 |    51
+       50 |    8 |    26
+       75 |   14 |    14
+       90 |   25 |     6
+       95 |   26 |     4
+      100 |   29 |     1
       |}]
   ;;
 
@@ -1401,13 +1439,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    12
+        - |    0 |    15
       ----+------+------
-        0 |    1 |    73
-       50 |    8 |    40
-       75 |   18 |    20
-       90 |   24 |     9
-       95 |   25 |     6
+        0 |    1 |    55
+       50 |   10 |    28
+       75 |   19 |    15
+       90 |   25 |     7
+       95 |   28 |     3
       100 |   29 |     1
       |}]
   ;;
@@ -1422,12 +1460,12 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    14
+        - |    0 |     8
       ----+------+------
-        0 |    1 |    55
-       75 |    2 |    40
-       90 |    3 |    11
-      100 |    4 |     3
+        0 |    1 |    59
+       75 |    2 |    35
+       90 |    3 |    14
+      100 |    4 |     5
       |}]
   ;;
 
@@ -1441,11 +1479,12 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    11
+        - |    0 |     9
       ----+------+------
-        0 |    1 |    54
-       75 |    2 |    30
-      100 |    3 |    10
+       50 |    1 |    53
+       75 |    2 |    24
+       95 |    3 |     9
+      100 |    4 |     1
       |}]
   ;;
 
@@ -1459,14 +1498,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    17
+        - |    0 |    14
       ----+------+------
-        0 |    1 |    71
-       50 |    9 |    38
-       75 |   14 |    20
-       90 |   21 |    10
-       95 |   26 |     4
-      100 |   29 |     1
+        0 |    1 |    75
+       50 |    9 |    40
+       75 |   19 |    19
+       90 |   25 |     8
+       95 |   29 |     4
+      100 |   31 |     1
       |}]
   ;;
 
@@ -1480,14 +1519,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    13
+        - |    0 |    11
       ----+------+------
-        0 |    1 |    68
-       50 |    9 |    39
-       75 |   15 |    18
-       90 |   19 |     8
-       95 |   24 |     4
-      100 |   27 |     1
+        0 |    1 |    60
+       50 |    9 |    30
+       75 |   16 |    16
+       90 |   26 |     6
+       95 |   28 |     4
+      100 |   31 |     1
       |}]
   ;;
 
@@ -1501,13 +1540,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        0 |    1 |   258
-       50 |    2 |   166
-       75 |    5 |    75
-       90 |   17 |    27
-       95 |   22 |    13
-       99 |   28 |     3
-      100 |   51 |     1
+        0 |    1 |   240
+       50 |    2 |   147
+       75 |    4 |    69
+       90 |   11 |    27
+       95 |   19 |    13
+       99 |   25 |     3
+      100 |   27 |     1
       |}]
   ;;
 
@@ -1521,13 +1560,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        0 |    1 |   261
-       50 |    2 |   164
-       75 |    5 |    68
-       90 |   14 |    29
-       95 |   21 |    15
-       99 |   30 |     3
-      100 |   33 |     1
+        0 |    1 |   250
+       50 |    2 |   154
+       75 |    5 |    67
+       90 |   13 |    27
+       95 |   19 |    13
+       99 |   25 |     3
+      100 |   32 |     1
       |}]
   ;;
 
@@ -1541,13 +1580,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        0 |    1 |   228
-       50 |    2 |   148
-       75 |    5 |    57
-       90 |   12 |    25
-       95 |   18 |    12
+        0 |    1 |   238
+       50 |    2 |   135
+       75 |    4 |    68
+       90 |    8 |    25
+       95 |   15 |    12
        99 |   27 |     3
-      100 |   30 |     1
+      100 |   36 |     1
       |}]
   ;;
 
@@ -1561,15 +1600,37 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    47
+        - |    0 |    50
       ----+------+------
-        0 |    1 |   218
-       50 |    2 |   130
-       75 |    6 |    55
-       90 |   15 |    22
-       95 |   20 |    11
-       99 |   25 |     4
-      100 |   30 |     1
+        0 |    1 |   192
+       50 |    2 |   107
+       75 |    4 |    57
+       90 |   13 |    21
+       95 |   18 |    10
+       99 |   27 |     2
+      100 |   28 |     1
+      |}]
+  ;;
+
+  let change_or_null = Map.change_or_null
+
+  let%expect_test _ =
+    test (function
+      | Change_or_null _ -> true
+      | _ -> false);
+    [%expect
+      {|
+        % | size | count
+      ----+------+------
+        - |    0 |    53
+      ----+------+------
+        0 |    1 |   196
+       50 |    2 |   120
+       75 |    5 |    57
+       90 |   12 |    21
+       95 |   16 |    13
+       99 |   30 |     2
+      100 |   33 |     1
       |}]
   ;;
 
@@ -1583,13 +1644,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        0 |    1 |   283
-       50 |    2 |   170
-       75 |    5 |    81
-       90 |   13 |    29
-       95 |   21 |    15
-       99 |   31 |     3
-      100 |   44 |     1
+        0 |    1 |   246
+       50 |    2 |   159
+       75 |    4 |    71
+       90 |   11 |    27
+       95 |   18 |    13
+       99 |   25 |     5
+      100 |   28 |     1
       |}]
   ;;
 
@@ -1603,13 +1664,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        0 |    1 |   243
-       50 |    2 |   150
-       75 |    6 |    62
-       90 |   16 |    27
-       95 |   21 |    13
-       99 |   29 |     3
-      100 |   82 |     1
+        0 |    1 |   256
+       50 |    2 |   141
+       75 |    4 |    72
+       90 |   11 |    27
+       95 |   18 |    13
+       99 |   26 |     4
+      100 |   28 |     1
       |}]
   ;;
 
@@ -1623,15 +1684,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   107
+        - |    0 |    90
       ----+------+------
-        0 |    1 |   156
-       50 |    3 |    86
-       75 |    9 |    39
-       90 |   18 |    17
-       95 |   22 |     9
-       99 |   28 |     4
-      100 |   42 |     1
+        0 |    1 |   153
+       50 |    2 |    94
+       75 |    8 |    43
+       90 |   21 |    16
+       95 |   24 |    10
+       99 |   28 |     2
+      100 |   35 |     1
       |}]
   ;;
 
@@ -1645,15 +1706,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    86
+        - |    0 |    89
       ----+------+------
-        0 |    1 |   155
-       50 |    3 |    89
-       75 |   13 |    40
-       90 |   21 |    16
-       95 |   24 |     8
-       99 |   25 |     4
-      100 |   28 |     1
+        0 |    1 |   145
+       50 |    3 |    85
+       75 |    9 |    37
+       90 |   17 |    15
+       95 |   19 |    11
+       99 |   26 |     2
+      100 |   27 |     1
       |}]
   ;;
 
@@ -1667,15 +1728,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    98
+        - |    0 |    75
       ----+------+------
-        0 |    1 |   169
-       50 |    4 |    86
-       75 |   11 |    44
-       90 |   21 |    17
-       95 |   25 |     9
-       99 |   28 |     3
-      100 |   43 |     1
+        0 |    1 |   135
+       50 |    3 |    71
+       75 |    7 |    36
+       90 |   14 |    16
+       95 |   23 |     7
+      100 |   28 |     2
       |}]
   ;;
 
@@ -1689,15 +1749,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   170
+        - |    0 |   123
       ----+------+------
-        0 |    1 |   108
-       50 |    2 |    66
-       75 |    5 |    28
-       90 |   12 |    11
-       95 |   18 |     6
-       99 |   24 |     2
-      100 |   26 |     1
+        0 |    1 |   104
+       50 |    3 |    54
+       75 |    5 |    32
+       90 |   14 |    11
+       95 |   19 |     7
+       99 |   24 |     4
+      100 |   28 |     1
       |}]
   ;;
 
@@ -1711,15 +1771,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   145
+        - |    0 |   129
       ----+------+------
-        0 |    1 |   110
-       50 |    2 |    70
-       75 |    6 |    28
-       90 |    9 |    12
-       95 |   12 |     8
-       99 |   19 |     2
-      100 |   20 |     1
+        0 |    1 |    95
+       50 |    2 |    61
+       75 |    6 |    24
+       90 |   15 |    11
+       95 |   23 |     5
+      100 |   30 |     1
       |}]
   ;;
 
@@ -1733,15 +1792,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   147
+        - |    0 |   151
       ----+------+------
-        0 |    1 |   131
-       50 |    2 |    84
-       75 |    5 |    33
-       90 |   15 |    14
-       95 |   20 |     7
-       99 |   33 |     2
-      100 |   40 |     1
+        0 |    1 |   105
+       50 |    2 |    61
+       75 |    4 |    29
+       90 |    9 |    12
+       95 |   13 |     6
+       99 |   18 |     2
+      100 |   25 |     1
       |}]
   ;;
 
@@ -1755,14 +1814,36 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   150
+        - |    0 |   142
       ----+------+------
-        0 |    1 |    91
-       50 |    2 |    55
-       75 |    7 |    24
-       90 |   13 |    12
-       95 |   18 |     6
-      100 |   31 |     1
+        0 |    1 |   100
+       50 |    2 |    58
+       75 |    6 |    25
+       90 |   16 |    11
+       95 |   18 |     8
+      100 |   28 |     1
+      |}]
+  ;;
+
+  let filter_map_or_null = Map.filter_map_or_null
+
+  let%expect_test _ =
+    test (function
+      | Filter_map_or_null _ -> true
+      | _ -> false);
+    [%expect
+      {|
+        % | size | count
+      ----+------+------
+        - |    0 |   142
+      ----+------+------
+        0 |    1 |   105
+       50 |    2 |    59
+       75 |    5 |    28
+       90 |   14 |    11
+       95 |   17 |     7
+       99 |   23 |     2
+      100 |   28 |     1
       |}]
   ;;
 
@@ -1776,15 +1857,35 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   140
+        - |    0 |   127
       ----+------+------
-        0 |    1 |   125
-       50 |    2 |    72
-       75 |    6 |    32
-       90 |   14 |    13
-       95 |   20 |     8
-       99 |   28 |     2
-      100 |   50 |     1
+        0 |    1 |    93
+       50 |    2 |    50
+       75 |    4 |    28
+       90 |    8 |    12
+       95 |   13 |     5
+      100 |   33 |     1
+      |}]
+  ;;
+
+  let filter_mapi_or_null = Map.filter_mapi_or_null
+
+  let%expect_test _ =
+    test (function
+      | Filter_mapi_or_null _ -> true
+      | _ -> false);
+    [%expect
+      {|
+        % | size | count
+      ----+------+------
+        - |    0 |   139
+      ----+------+------
+        0 |    1 |    88
+       50 |    2 |    51
+       75 |    6 |    24
+       90 |   15 |     9
+       95 |   18 |     6
+      100 |   26 |     1
       |}]
   ;;
 
@@ -1798,15 +1899,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   144
+        - |    0 |   132
       ----+------+------
-        0 |    1 |   112
-       50 |    2 |    67
-       75 |    5 |    30
-       90 |   13 |    12
-       95 |   18 |     6
-       99 |   24 |     2
-      100 |   29 |     1
+        0 |    1 |    91
+       50 |    2 |    59
+       75 |    6 |    24
+       90 |   11 |    13
+       95 |   16 |     6
+      100 |   27 |     1
       |}]
   ;;
 
@@ -1820,14 +1920,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   143
+        - |    0 |   147
       ----+------+------
-        0 |    1 |    99
-       50 |    2 |    61
-       75 |    5 |    26
-       90 |   14 |    11
-       95 |   20 |     5
-      100 |   33 |     1
+        0 |    1 |    96
+       50 |    2 |    63
+       75 |    4 |    25
+       90 |   11 |    10
+       95 |   13 |     5
+      100 |   37 |     1
       |}]
   ;;
 
@@ -1841,15 +1941,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   150
+        - |    0 |   144
       ----+------+------
-        0 |    1 |   116
-       50 |    2 |    64
-       75 |    4 |    31
-       90 |    8 |    14
-       95 |   18 |     6
-       99 |   24 |     3
-      100 |   25 |     1
+        0 |    1 |   112
+       50 |    2 |    70
+       75 |    5 |    28
+       90 |   12 |    13
+       95 |   17 |     6
+      100 |   26 |     2
       |}]
   ;;
 
@@ -1863,15 +1962,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   157
+        - |    0 |   153
       ----+------+------
-        0 |    1 |   119
-       50 |    2 |    84
-       75 |    5 |    30
-       90 |   11 |    12
-       95 |   17 |     6
-       99 |   25 |     2
-      100 |   26 |     1
+        0 |    1 |    95
+       50 |    2 |    58
+       75 |    4 |    31
+       90 |   13 |    10
+       95 |   17 |     5
+      100 |   30 |     1
       |}]
   ;;
 
@@ -1885,15 +1983,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    73
+        - |    0 |    90
       ----+------+------
-        0 |    1 |   155
-       50 |    2 |   115
-       75 |    5 |    47
-       90 |   11 |    16
-       95 |   24 |     8
-       99 |   28 |     2
-      100 |   32 |     1
+        0 |    1 |   152
+       50 |    2 |   100
+       75 |    5 |    46
+       90 |   14 |    16
+       95 |   16 |    11
+       99 |   22 |     2
+      100 |   53 |     1
       |}]
   ;;
 
@@ -1907,15 +2005,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    30
+        - |    0 |    28
       ----+------+------
-        0 |    1 |   225
-       50 |    5 |   119
-       75 |   12 |    63
-       90 |   26 |    23
-       95 |   30 |    12
-       99 |   43 |     3
-      100 |   47 |     1
+        0 |    1 |   204
+       50 |    5 |   112
+       75 |   13 |    51
+       90 |   23 |    21
+       95 |   29 |    11
+       99 |   51 |     3
+      100 |   54 |     1
       |}]
   ;;
 
@@ -1929,15 +2027,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    22
+        - |    0 |    37
       ----+------+------
-        0 |    1 |   237
-       50 |    4 |   127
-       75 |   12 |    66
-       90 |   19 |    27
-       95 |   25 |    12
-       99 |   36 |     3
-      100 |   46 |     1
+        0 |    1 |   230
+       50 |    5 |   123
+       75 |   13 |    61
+       90 |   22 |    26
+       95 |   26 |    15
+       99 |   32 |     4
+      100 |   48 |     1
       |}]
   ;;
 
@@ -1951,15 +2049,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    69
+        - |    0 |    77
       ----+------+------
-        0 |    1 |   159
-       50 |    2 |   108
-       75 |    9 |    40
-       90 |   24 |    16
-       95 |   27 |     9
-       99 |   47 |     2
-      100 |   52 |     1
+        0 |    1 |   155
+       50 |    2 |    99
+       75 |    8 |    40
+       90 |   17 |    20
+       95 |   20 |     8
+       99 |   32 |     2
+      100 |   43 |     1
       |}]
   ;;
 
@@ -1973,15 +2071,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   161
+        - |    0 |   149
       ----+------+------
-        0 |    1 |   110
-       50 |    2 |    63
-       75 |    5 |    29
-       90 |    8 |    13
-       95 |   18 |     7
-       99 |   20 |     3
-      100 |   26 |     1
+        0 |    1 |    89
+       50 |    3 |    45
+       75 |    5 |    24
+       90 |   10 |    13
+       95 |   17 |     5
+      100 |   24 |     1
       |}]
   ;;
 
@@ -1995,15 +2092,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   138
+        - |    0 |   128
       ----+------+------
-        0 |    1 |   118
-       50 |    2 |    77
-       75 |    7 |    31
-       90 |   13 |    13
-       95 |   17 |     7
-       99 |   26 |     2
-      100 |   32 |     1
+        0 |    1 |   104
+       50 |    2 |    53
+       75 |    3 |    38
+       90 |    9 |    11
+       95 |   17 |     6
+       99 |   22 |     2
+      100 |   23 |     1
       |}]
   ;;
 
@@ -2017,15 +2114,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   150
+        - |    0 |   122
       ----+------+------
-        0 |    1 |   106
-       50 |    2 |    70
-       75 |    5 |    32
-       90 |   12 |    12
-       95 |   14 |     7
-       99 |   22 |     3
-      100 |   33 |     1
+        0 |    1 |   101
+       50 |    2 |    58
+       75 |    5 |    26
+       90 |   13 |    11
+       95 |   15 |     6
+       99 |   20 |     3
+      100 |   21 |     1
       |}]
   ;;
 
@@ -2039,15 +2136,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   156
+        - |    0 |   149
       ----+------+------
-        0 |    1 |   101
-       50 |    2 |    66
-       75 |    7 |    26
-       90 |   12 |    12
-       95 |   16 |     6
-       99 |   22 |     2
-      100 |   29 |     1
+        0 |    1 |    79
+       50 |    3 |    43
+       75 |    6 |    21
+       90 |   13 |     9
+       95 |   16 |     4
+      100 |   27 |     1
       |}]
   ;;
 
@@ -2061,15 +2157,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    27
+        - |    0 |    44
       ----+------+------
-        0 |    1 |   235
-       50 |    5 |   129
-       75 |   14 |    59
-       90 |   21 |    24
-       95 |   29 |    12
-       99 |   44 |     3
-      100 |   45 |     2
+        0 |    1 |   193
+       50 |    5 |   105
+       75 |   13 |    49
+       90 |   22 |    22
+       95 |   27 |    10
+       99 |   49 |     2
+      100 |   51 |     1
       |}]
   ;;
 
@@ -2083,14 +2179,14 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   178
+        - |    0 |   169
       ----+------+------
-        0 |    1 |    84
-       50 |    2 |    46
-       75 |    5 |    21
-       90 |   10 |     9
-       95 |   15 |     5
-      100 |   24 |     1
+        0 |    1 |    75
+       50 |    2 |    45
+       75 |    7 |    19
+       90 |   17 |     8
+       95 |   20 |     4
+      100 |   26 |     2
       |}]
   ;;
 
@@ -2112,15 +2208,15 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |    91
+        - |    0 |    92
       ----+------+------
-        0 |    1 |   172
-       50 |    3 |    97
-       75 |   12 |    44
-       90 |   21 |    19
-       95 |   26 |    10
-       99 |   32 |     3
-      100 |   42 |     1
+        0 |    1 |   148
+       50 |    3 |    85
+       75 |    8 |    37
+       90 |   16 |    17
+       95 |   21 |     8
+       99 |   28 |     3
+      100 |   52 |     1
       |}]
   ;;
 
@@ -2132,13 +2228,13 @@ module%test [@tags "64-bits-only"] _ : Impl = struct
       {|
         % | size | count
       ----+------+------
-        - |    0 |   133
+        - |    0 |   131
       ----+------+------
-       50 |    1 |   101
-       75 |    4 |    28
-       90 |   11 |    11
-       95 |   16 |     6
-       99 |   25 |     2
+        0 |    1 |    97
+       50 |    2 |    49
+       75 |    3 |    29
+       90 |   12 |    10
+       95 |   16 |     5
       100 |   26 |     1
       |}]
   ;;

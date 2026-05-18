@@ -19,6 +19,7 @@ val empty : ('a : value_or_null). 'a t
 
 (** For obtaining uncontended access to [empty] from a portable function. *)
 val get_empty : ('a : value_or_null). unit -> 'a t
+[@@zero_alloc]
 
 val create : ('a : value_or_null). len:int -> 'a -> 'a t
 val singleton : ('a : value_or_null). 'a -> 'a t
@@ -154,6 +155,9 @@ val unsafe_create_uninitialized : ('a : value_or_null). len:int -> 'a t
 
 (** New obj array filled with [Obj.repr 0] *)
 val create_obj_array : len:int -> Stdlib.Obj.t t
+
+(** New nullable obj array filled with [Obj.repr 0] *)
+val create_nullable_obj_array : len:int -> Obj.Nullable.t t
 
 (** [unsafe_set_assuming_currently_int t i obj] sets index [i] of [t] to [obj], but only
     works correctly if the value there is an immediate, i.e.

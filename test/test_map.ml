@@ -74,11 +74,15 @@ let%expect_test "find_exn" =
   [%expect {| 2 |}];
   test_success "three";
   [%expect {| 3 |}];
-  let test_failure key = require_does_raise (fun () -> Map.find_exn map key) in
+  let test_failure key =
+    require_does_raise ~hide_positions:true (fun () -> Map.find_exn map key)
+  in
   test_failure "zero";
-  [%expect {| (Not_found_s ("Map.find_exn: not found" zero)) |}];
+  [%expect
+    {| (Not_found_s ("Map.find_exn: not found" zero lib/base/test/test_map.ml:LINE:COL)) |}];
   test_failure "four";
-  [%expect {| (Not_found_s ("Map.find_exn: not found" four)) |}]
+  [%expect
+    {| (Not_found_s ("Map.find_exn: not found" four lib/base/test/test_map.ml:LINE:COL)) |}]
 ;;
 
 let%expect_test "[t_of_sexp] error on duplicate" =
@@ -285,40 +289,30 @@ module%test [@name "[symmetric_diff]"] _ = struct
       {|
       ((size                    1_048_576)
        (add_comparisons         24_379_415)
-       (diff_comparisons        25_165_828)
-       (mean_diff_comparisons   24.000003814697266)
-       (median_diff_comparisons 24)
+       (diff_comparisons        4_194_035)
+       (mean_diff_comparisons   3.9997434616088867)
+       (median_diff_comparisons 3)
        (diff_comparison_buckets (
-         ((comparisons 1)  (times 1))
-         ((comparisons 2)  (times 1))
-         ((comparisons 3)  (times 3))
-         ((comparisons 4)  (times 4))
-         ((comparisons 5)  (times 6))
-         ((comparisons 6)  (times 11))
-         ((comparisons 7)  (times 20))
-         ((comparisons 8)  (times 35))
-         ((comparisons 9)  (times 61))
-         ((comparisons 10) (times 107))
-         ((comparisons 11) (times 188))
-         ((comparisons 12) (times 330))
-         ((comparisons 13) (times 579))
-         ((comparisons 14) (times 1_016))
-         ((comparisons 15) (times 1_783))
-         ((comparisons 16) (times 3_129))
-         ((comparisons 17) (times 5_491))
-         ((comparisons 18) (times 9_636))
-         ((comparisons 19) (times 16_910))
-         ((comparisons 20) (times 29_675))
-         ((comparisons 21) (times 52_056))
-         ((comparisons 22) (times 90_397))
-         ((comparisons 23) (times 147_221))
-         ((comparisons 24) (times 205_068))
-         ((comparisons 25) (times 224_909))
-         ((comparisons 26) (times 170_393))
-         ((comparisons 27) (times 73_527))
-         ((comparisons 28) (times 14_876))
-         ((comparisons 29) (times 1_123))
-         ((comparisons 30) (times 20)))))
+         ((comparisons 1)  (times 262_163))
+         ((comparisons 3)  (times 262_145))
+         ((comparisons 5)  (times 262_143))
+         ((comparisons 6)  (times 131_071))
+         ((comparisons 7)  (times 65_535))
+         ((comparisons 8)  (times 32_767))
+         ((comparisons 9)  (times 16_383))
+         ((comparisons 10) (times 8_191))
+         ((comparisons 11) (times 4_095))
+         ((comparisons 12) (times 2_047))
+         ((comparisons 13) (times 1_023))
+         ((comparisons 14) (times 511))
+         ((comparisons 15) (times 255))
+         ((comparisons 16) (times 127))
+         ((comparisons 17) (times 63))
+         ((comparisons 18) (times 31))
+         ((comparisons 19) (times 15))
+         ((comparisons 20) (times 7))
+         ((comparisons 21) (times 3))
+         ((comparisons 22) (times 1)))))
       |}]
   ;;
 

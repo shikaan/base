@@ -62,9 +62,11 @@ val to_string_mach : t -> string
     not. *)
 val protectx
   : ('a : value_or_null) ('b : value_or_null).
-  f:('a -> 'b) @ local once -> 'a -> finally:('a -> unit) @ local once -> 'b
+  f:('a -> 'b) @ local once -> 'a -> finally:('a -> unit) @ local once unyielding -> 'b
 
-val protect : f:(unit -> 'a) @ local once -> finally:(unit -> unit) @ local once -> 'a
+val protect
+  : ('a : value_or_null).
+  f:(unit -> 'a) @ local once -> finally:(unit -> unit) @ local once unyielding -> 'a
 
 (** [handle_uncaught ~exit f] catches an exception escaping [f] and prints an error
     message to stderr. Exits with return code 1 if [exit] is [true], and returns unit
