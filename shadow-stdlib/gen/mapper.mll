@@ -201,7 +201,7 @@ let val_replacement = function
   | "prerr_string"        -> Repl "Stdio.Out_channel.output_string Stdio.stderr"
   | "print_bytes"         -> Repl "Stdio.Out_channel.output_bytes Stdio.stdout"
   | "print_char"          -> Repl "Stdio.Out_channel.output_char Stdio.stdout"
-  | "print_endline"       -> Repl "Stdio.print_endline"
+  | "print_endline"       -> Repl "Stdlib.print_endline"
   | "print_float"         -> Repl "Stdio.eprintf \"%f\""
   | "print_int"           -> Repl "Stdio.eprintf \"%d\""
   | "print_newline"       -> Repl "Stdio.eprintf \"\n%!\""
